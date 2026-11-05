@@ -363,7 +363,7 @@
     </div>
   </div>
   <div id="ticker">
-    <div id="soon" class="ctab" aria-live="polite"><span class="st" id="soont"></span><span class="sl"><span class="lv">Live</span></span><span class="sc" id="soonc"></span></div>
+    <div id="soon" class="ctab" aria-live="polite"><span class="st" id="soont"></span><span class="sl"><span class="lv" id="soonlv">Live</span></span><span class="sc" id="soonc"></span></div>
     <div id="brand">Announcements</div>
     <div id="marquee"><div id="track"></div></div>
   </div>
@@ -456,6 +456,9 @@ const VENUES = {
 const venue = p => (p && VENUES[String(p).trim()]) || p || '';
 // Settings tab: "Sound on screens" — which screens may play livestream audio. Each device must also allow autoplay with sound.
 let SOUND_SCREENS = ['rotunda','admissions','auditorium'];
+// Fixed words on screen; the Sheet's "Screen labels" can override each one
+let LBL = { scanTo:'Scan to', upcoming:'Upcoming', icymi:'ICYMI', announcements:'Announcements', live:'Live', in:'In', now:'Now',
+  wxNow:'Now', tomorrow:'Tomorrow', rain:'Rain', snow:'Snow', sleet:'Sleet' };
 // Settings tab: "Countdown minutes" — the ticker shows LIVE IN mm:ss this long before a scheduled stream.
 let COUNTDOWN_MIN = 60;
 // preview only (press L, or add ?live=demo): a local clip stands in for a stream
@@ -481,7 +484,7 @@ const MON = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','
 const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 function parseWhen(v){
   if(v instanceof Date) return v;
-  const t = String(v || '').trim(); if(!t) return null;
+  const t = String(v || '').trim().replace(/^[A-Za-z]{3,9}\.?,?\s+(?=\d)/, ''); if(!t) return null;   // drops a leading weekday ("Thu 11/5/2026")
   let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?)?$/);
   let y, mo, d, h = 0, mi = 0, se = 0, ap;
   if(m){ [, y, mo, d, h = 0, mi = 0, se = 0, ap] = m; }
@@ -562,7 +565,7 @@ function qrBtn(p){
   const split = t => { const w = t.split(' '), k = Math.ceil(w.length/2);
     return w.length > 1 ? `<span>${w.slice(0,k).join(' ')}</span><span>${w.slice(k).join(' ')}</span>` : `<span>${t}</span>`; };
   // prompt on two lines, subhead also wrapped onto two lines
-  return `<div class="qrcta"><div class="code">${code}</div><div><div class="q0">Scan to</div>
+  return `<div class="qrcta"><div class="code">${code}</div><div><div class="q0">${LBL.scanTo}</div>
     <div class="q1">${split(p.cta)}</div>${p.ctaSub?`<div class="q2">${split(p.ctaSub)}</div>`:''}</div></div>`;
 }
 function contentHTML(p){
@@ -575,7 +578,7 @@ function contentHTML(p){
   }
   if(p.type==='event'){
     const d = ymd(p.date);
-    return `      <div class="event-row"><div class="datebox"><div class="st ${p.status||'upcoming'}">${p.status==='recap'?'ICYMI':'Upcoming'}</div><div class="m">${MON[d.getMonth()]}</div><div class="d">${d.getDate()}</div><div class="w">${DOW[d.getDay()]}</div></div>
+    return `      <div class="event-row"><div class="datebox"><div class="st ${p.status||'upcoming'}">${p.status==='recap'?LBL.icymi:LBL.upcoming}</div><div class="m">${MON[d.getMonth()]}</div><div class="d">${d.getDate()}</div><div class="w">${DOW[d.getDay()]}</div></div>
       <div><h1>${p.title}</h1><div class="meta"><span><b>${p.time}</b></span>${p.place?`<span class="sep" aria-hidden="true"></span><span class="loc">${venue(p.place)}</span>`:''}</div></div></div>${qrBtn(p)}`;
   }
   if(p.type==='quote' || p.type==='spotlight') return `<div class="kicker">${p.kicker}</div><h1>${p.title}</h1><p class="body">${p.body}</p>${qrBtn(p)}`;
@@ -667,7 +670,7 @@ function soundAllowed(){
   try{ const ac = new (window.AudioContext || window.webkitAudioContext)(); const ok = ac.state === 'running'; ac.close(); return ok; }
   catch(e){ return false; }
 }
-const wantsSound = l => SOUND_SCREENS.includes(channel) && String(l.sound || 'on').toLowerCase() !== 'off';
+const wantsSound = l => (l.soundScreens || SOUND_SCREENS).includes(channel) && String(l.sound || 'on').toLowerCase() !== 'off';
 
 function liveNow(){
   if(liveDemo) return LIVE_DEMO;
@@ -725,7 +728,7 @@ function startLive(l, key){
   $('#live').innerHTML = `<div class="lframe">${player}</div>`;
   const tab = $('#livetab');
   tab.classList.remove('show','dropping');
-  tab.innerHTML = `<span class="st">${strip(l.title)}</span><span class="sl"><span class="lv">Live</span></span><span class="sc"><span class="cv">${cvHTML('now')}</span></span>`
+  tab.innerHTML = `<span class="st">${strip(l.title)}</span><span class="sl"><span class="lv">${LBL.live}</span></span><span class="sc"><span class="cv">${cvHTML('now')}</span></span>`
     + (l.place ? `<span class="sep" aria-hidden="true"></span><span class="locw"><span class="loc">${venue(l.place)}</span></span>` : '')
     + (want && !sound && src.kind !== 'card' ? `<span class="lsound"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></svg>Press any key for sound</span>` : '');
   if(handoff){
@@ -798,7 +801,7 @@ function nextLive(){
   return rows.filter(l => l.url && String(l.mode||'auto').toLowerCase() === 'auto' && (!l.screens || l.screens.includes(channel)))
     .map(l => ({ l, t: atLocal(l.start) })).filter(x => x.t && +x.t > +now - 3000 && +x.t <= horizon).sort((a,b) => a.t - b.t)[0] || null;
 }
-const cvHTML = v => v === 'now' ? '<b>now</b>' : `<span class="ci">in</span><span class="dg"><b>${v}</b></span>`;
+const cvHTML = v => v === 'now' ? `<b>${LBL.now}</b>` : `<span class="ci">${LBL.in}</span><span class="dg"><b>${v}</b></span>`;
 let soonVal = '';
 // swap old → new inside a clipping box: old slides out left, new slides in
 function roll(box, oldEl, html, cls, tag){
@@ -816,7 +819,7 @@ function setCounter(v){
     return;
   }
   if(v === 'now'){ box.style.minWidth = box.offsetWidth + 'px'; roll(box, cur, cvHTML(v), 'cv'); }                                       // "IN 0:01" → "NOW"
-  else if(v.length !== soonVal.length || /:59$/.test(v)){                                 // minute change: digits only
+  else if(v.length !== soonVal.length || /:59$/.test(v) || !/:/.test(v) || !/:/.test(soonVal)){                                 // minute change: digits only
     const dg = cur.querySelector('.dg'); roll(dg, dg.querySelector('b:not(.out)'), v, '', 'b'); }
   else cur.querySelector('.dg b:not(.out)').textContent = v;
   soonVal = v;
@@ -828,13 +831,16 @@ function tickSoon(){
   if(!n){ soonVal = ''; $('#soonc').innerHTML = ''; $('#soonc').style.minWidth = ''; return; }
   const left = Math.max(0, Math.ceil((n.t - new Date())/1000));
   // under a minute the leading zero drops (1:00 → :59 … :01 → NOW)
-  setCounter(!left ? 'now' : (left >= 60 ? Math.floor(left/60) : '') + ':' + String(left%60).padStart(2,'0'));
+  const d = Math.floor(left/86400), h = Math.floor(left/3600);
+  setCounter(!left ? 'now' : d >= 1 ? `${d} ${d === 1 ? 'day' : 'days'}` : h >= 1 ? `${h} ${h === 1 ? 'hr' : 'hrs'}`
+    : (left >= 60 ? Math.floor(left/60) : '') + ':' + String(left%60).padStart(2,'0'));
   const t = strip(n.l.title); if($('#soont').textContent !== t) $('#soont').textContent = t;
   if(left <= 1) setTimeout(checkLive, 2400);   // let "NOW" fully land before the bar lifts
 }
 
 /* ticker */
 function buildTicker(){
+  $('#brand').textContent = LBL.announcements; $('#soonlv').textContent = LBL.live;
   const one = TICKER.map(t=>`<span class="${t.hot?'hot':''}">${t.hot?`<b>${t.hot.toUpperCase()}</b>`:''}${t.text}</span><span class="sep">◆</span>`).join('');
   $('#track').innerHTML = one + one;
   requestAnimationFrame(()=>{ $('#track').style.animationDuration = ($('#track').scrollWidth/2/70) + 's'; });
@@ -1175,7 +1181,7 @@ const DROP = `<svg viewBox="0 0 24 24" width="13" height="13" style="width:13px;
 
 const FLAKE = `<svg viewBox="0 0 24 24" width="13" height="13" style="width:13px;height:13px;margin:0 2px 0 0;vertical-align:-1px"><g stroke="#E6EEF8" stroke-width="2.4" stroke-linecap="round">${[0,60,120].map(a=>`<line x1="12" y1="3" x2="12" y2="21" transform="rotate(${a} 12 12)"/>`).join('')}</g></svg>`;
 const SLEETI = `<svg viewBox="0 0 24 24" width="13" height="13" style="width:13px;height:13px;margin:0 2px 0 0;vertical-align:-1px"><path d="M9 2c3 4 4.5 6.5 4.5 8.5a4.5 4.5 0 0 1-9 0C4.5 8.5 6 6 9 2z" fill="#9DC0EA"/><circle cx="17.5" cy="17.5" r="3.6" fill="#E6EEF8"/></svg>`;
-const PRECIP = { rain:{ icon:DROP, label:'RAIN' }, snow:{ icon:FLAKE, label:'SNOW' }, sleet:{ icon:SLEETI, label:'SLEET' } };
+const PRECIP = { rain:{ icon:DROP, label:'rain' }, snow:{ icon:FLAKE, label:'snow' }, sleet:{ icon:SLEETI, label:'sleet' } };
 const AXIS = `<div class="axis num dim"><span>6a</span><span>12p</span><span>6p</span><span>11p</span></div>`;
 const peakOf = hrs => hrs.reduce((a,b)=> b.p>a.p ? b : a, hrs[0]);
 
@@ -1197,17 +1203,19 @@ function graph(day, now){
   }
   const line = `<svg class="tline" viewBox="0 0 300 30" preserveAspectRatio="none" style="margin-bottom:-18px">
       <polyline points="${pts}" fill="none" stroke="rgba(245,241,232,.75)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>${dot}`;
-  const rain = `<div class="rain"><span class="rl">${P.icon}${P.label}</span><span class="num">${pk.p}<span class="pct">%</span></span></div>`;
+  const rain = `<div class="rain"><span class="rl">${P.icon}${LBL[P.label]}</span><span class="num">${pk.p}<span class="pct">%</span></span></div>`;
   return `<div class="graph k-${k}"><div class="gcol">${line}<div class="pzone"><div class="bars">${bars}</div>${marker}</div>${AXIS}</div>${rain}</div>`;
 }
 
+let lastWx = null;
 function renderWx(w, sample){
+  lastWx = [w, sample];
   const n = new Date(), t = w.today, m = w.tom, mp = peakOf(m.hourly);
-  $('#wday0').innerHTML = `<div class="lab">Now</div>
+  $('#wday0').innerHTML = `<div class="lab">${LBL.wxNow}</div>
     <div class="hdr">${wxIcon(w.now.code)}<span class="num temp">${Math.round(w.now.temp)}°</span>
       <div class="hl"><span class="num">${Math.round(t.hi)}°</span><span class="sl">/</span><span class="num dim">${Math.round(t.lo)}°</span></div></div>
     ${graph(t, {hour:n.getHours(), min:n.getMinutes()})}`;
-  $('#wday1').innerHTML = `<div class="lab">Tomorrow</div>
+  $('#wday1').innerHTML = `<div class="lab">${LBL.tomorrow}</div>
     <div class="hdr">${wxIcon(m.code)}<span class="num pair">${Math.round(m.hi)}° <span class="dim">/ ${Math.round(m.lo)}°</span></span>
       <span class="rain k-${precipKind(m.code)}">${PRECIP[precipKind(m.code)].icon.replace(/13/g,'20')}<span class="num">${mp.p}<span class="pct">%</span></span></span></div>`;
 }
@@ -1252,10 +1260,11 @@ addEventListener('keydown', e=>{
 addEventListener('hashchange', () => { liveCur = null; document.body.classList.remove('is-live'); $('#live').innerHTML = ''; build(); checkLive(); });
 
 /* ---------- content from the Google Sheet ----------
-   The Sheet (shared "anyone with the link can view") is read as CSV, one tab at a time.
+   The Sheet (shared "anyone with the link can view") is read as CSV, one block of the Dashboard tab at a time.
    Every cell is treated as plain text: *word* becomes gold italics, a line break inside a cell becomes a line break.
    The last good copy is saved on this screen, so a network or Google outage keeps showing the most recent content. */
 const ALL_SCREENS = ['rotunda','admissions','auditorium'];
+const LBL_DEFAULT = Object.assign({}, LBL);
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const md = v => esc(v).trim().replace(/\*([^*\n]+)\*/g, '<em>$1</em>').replace(/\r?\n/g, '<br>');
 const yes = v => !/^(no|n|false|0|off|hide)$/i.test(String(v || '').trim());
@@ -1273,7 +1282,7 @@ function mediaOf(v){
   else return {};
   return /\.(jpe?g|png|webp|gif|avif)(\?|$)/i.test(src) ? { image:src } : { video:src };
 }
-function parseCSV(text){
+function parseRows(text){
   const rows = []; let row = [], cell = '', q = false;
   for(let i = 0; i < text.length; i++){
     const ch = text[i];
@@ -1284,56 +1293,62 @@ function parseCSV(text){
     else if(ch !== '\r') cell += ch;
   }
   if(cell !== '' || row.length){ row.push(cell); rows.push(row); }
-  const head = (rows.shift() || []).map(h => h.trim().toLowerCase());
-  return rows.filter(r => r.some(c => String(c).trim())).map(r => Object.fromEntries(head.map((h, i) => [h, (r[i] || '').trim()])));
+  return rows.map(r => r.map(c => c.trim()));
 }
-async function readTab(id, tab){
-  const u = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/gviz/tq?tqx=out:csv&headers=1&sheet=${encodeURIComponent(tab)}&t=${Date.now()}`;
+// Reads one block of the Dashboard tab (fixed slots) as CSV rows of plain values
+async function readRange(id, range){
+  const u = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/gviz/tq?tqx=out:csv&headers=0&sheet=Dashboard&range=${range}&t=${Date.now()}`;
   const r = await fetch(u, { cache:'no-store' });
-  if(!r.ok) throw new Error(tab + ' ' + r.status);
+  if(!r.ok) throw new Error(range + ' ' + r.status);
   const t = await r.text();
-  if(/^\s*</.test(t)) throw new Error(tab + ' not shared');   // got a sign-in page, not CSV
-  return parseCSV(t);
+  if(/^\s*</.test(t)) throw new Error('not shared');   // got a sign-in page, not CSV
+  return parseRows(t);
 }
+// Sheet layout — keep in step with the Dashboard tab
+const RANGES = { slides:'B14:R33', ticker:'B37:E46', live:'T14:AD17', lead:'AG14:AG14', labels:'AF17:AG28' };
+const LABEL_KEYS = { 'scan to':'scanTo', 'upcoming':'upcoming', 'icymi':'icymi', 'announcements':'announcements', 'live':'live', 'in':'in',
+  'now (livestream)':'now', 'now (weather)':'wxNow', 'tomorrow':'tomorrow', 'rain':'rain', 'snow':'snow', 'sleet':'sleet' };
+const QRID = v => String(v || '').trim().toUpperCase().replace(/[^0-9A-Z]/g, '');
 
-function fromSheet(tabs){
-  const set = Object.fromEntries((tabs.Settings || []).map(r => [String(r.setting || '').toLowerCase(), r.value]));
-  const secs = Math.max(4, +set['slide seconds'] || 10);
-  const content = (tabs.Slides || []).filter(r => yes(r.show) && (r.headline || r.kicker)).map(r => {
-    const type = String(r.type || 'promo').toLowerCase();
-    const o = { type: ['promo','countdown','quote','spotlight'].includes(type) ? type : 'promo',
-      screens: screensOf(r.screens), theme: ['gold','night','ember','forest','stone'].includes(String(r.theme).toLowerCase()) ? String(r.theme).toLowerCase() : 'stone', duration: +r.seconds || secs,
-      kicker: md(r.kicker), title: md(r.headline), body: md(r.body), cta: esc(r.cta || ''), ctaSub: esc(r['cta subhead'] || ''),
-      qrCode: String(r['qr code'] || '').trim().toUpperCase().replace(/[^0-9A-Z]/g, ''),
-      thumb: esc(r['bar label'] || String(r.headline || '').replace(/[*\n]/g, ' ').trim()), ...mediaOf(r.background) };
-    if(o.type === 'countdown'){ o.deadline = r.deadline; o.label = o.title; o.sub = o.body; }
-    if(!o.cta) o.qrCode = '';
-    return o;
-  });
-  const events = (tabs.Events || []).filter(r => yes(r.show) && r.title && parseWhen(r.date)).map(r => ({
-    status: /recap/i.test(r.status) ? 'recap' : 'upcoming', date: r.date, screens: screensOf(r.screens),
-    title: md(r.title), time: esc(r.time), place: esc(r.location), cta: esc(r.cta || ''), ctaSub: esc(r['cta subhead'] || ''),
-    qrCode: r.cta ? String(r['qr code'] || '').trim().toUpperCase().replace(/[^0-9A-Z]/g, '') : '', ...mediaOf(r.background) }))
-    .sort((a, b) => parseWhen(a.date) - parseWhen(b.date));
-  if(events.length) content.push({ type:'events', screens: ALL_SCREENS.slice(), theme:'night', per: secs,
-    kicker: esc(set['events kicker'] || 'Happening at Wake Div'), thumb: esc(set['events bar label'] || 'Upcoming Events'), events });
-  const ticker = (tabs.Ticker || []).filter(r => yes(r.show) && r.text).map(r => ({ hot: esc(r.label || ''), text: esc(r.text) }));
-  const live = (tabs.Live || []).filter(r => r.title && r['stream url']).map(r => ({
-    mode: String(r.mode || 'auto').toLowerCase(), title: esc(r.title), url: r['stream url'], start: r.start, end: r.end,
-    screens: screensOf(r.screens), place: esc(r.location), sound: yes(r.sound) ? 'on' : 'off',
-    qrCode: String(r['qr code'] || '').trim().toUpperCase().replace(/[^0-9A-Z]/g, '') }));
-  return { content, ticker, live, settings: {
-    countdownMin: +set['countdown minutes'] || 60,
-    soundScreens: set['sound screens'] == null ? ALL_SCREENS.slice() : screensOf(set['sound screens']),
-    lat: +set['weather latitude'] || 36.0999, lon: +set['weather longitude'] || -80.2442 } };
+function fromSheet(t){
+  const content = [], events = [];
+  for(const r of t.slides || []){
+    const [, show, scr, type0, bar, kicker, head, body, date, time, loc, cta, ctaSub, qr, bg, theme, secs] = r;
+    if(!yes(show) || !String(head || '').trim()) continue;
+    const type = String(type0 || 'promo').toLowerCase();
+    const th = String(theme || '').toLowerCase();
+    const base = { screens: screensOf(scr), theme: ['gold','night','ember','forest','stone'].includes(th) ? th : 'stone',
+      duration: Math.max(4, +secs || 10), cta: esc(cta || ''), ctaSub: esc(ctaSub || ''), qrCode: cta ? QRID(qr) : '', ...mediaOf(bg) };
+    if(type === 'event' || type === 'recap'){
+      if(!parseWhen(date)) continue;
+      events.push({ ...base, status: type === 'recap' ? 'recap' : 'upcoming', date, title: md(head), time: esc(time), place: esc(loc) });
+      continue;
+    }
+    const o = { ...base, type: ['promo','countdown','quote','spotlight'].includes(type) ? type : 'promo',
+      kicker: md(kicker), title: md(head), body: md(body), thumb: esc(bar || String(head).replace(/[*\n]/g, ' ').trim()) };
+    if(o.type === 'countdown'){ o.deadline = date; o.label = o.title; o.sub = o.body; }
+    content.push(o);
+  }
+  events.sort((a, b) => parseWhen(a.date) - parseWhen(b.date));
+  if(events.length) content.push({ type:'events', screens: ALL_SCREENS.slice(), theme:'night', per: events[0].duration, kicker:'', thumb:'', events });
+  const ticker = (t.ticker || []).filter(r => yes(r[1]) && String(r[3] || '').trim()).map(r => ({ hot: esc(r[2] || ''), text: esc(r[3]) }));
+  const live = (t.live || []).filter(r => r[2] && r[3]).map(r => ({
+    mode: /^on/i.test(String(r[1] || '').trim()) ? 'on' : String(r[1] || 'off').trim().toLowerCase(),
+    title: esc(r[2]), url: r[3], start: r[4] && r[5] ? `${r[4]} ${r[5]}` : '', end: r[4] && r[6] ? `${r[4]} ${r[6]}` : '',
+    place: esc(r[7]), screens: screensOf(r[8]), soundScreens: screensOf(String(r[9] || '').trim() ? r[9] : 'All'), qrCode: QRID(r[10]) }));
+  const labels = {};
+  for(const [k, v] of t.labels || []){ const key = LABEL_KEYS[String(k || '').trim().toLowerCase()]; if(key && String(v || '').trim()) labels[key] = esc(String(v).trim()); }
+  const lead = parseInt(((t.lead || [])[0] || [])[0], 10);
+  return { content, ticker, live, labels, settings: { countdownMin: (lead || 1) * 60 } };
 }
 
 let pendingContent = null, contentSig = '';
 function useContent(d){
   if(!d || !d.content || !d.content.length) return false;
   CONTENT = d.content; TICKER = d.ticker.length ? d.ticker : TICKER; LIVE = d.live;
-  COUNTDOWN_MIN = d.settings.countdownMin; SOUND_SCREENS = d.settings.soundScreens;
-  WX = { lat: d.settings.lat, lon: d.settings.lon };
+  COUNTDOWN_MIN = d.settings.countdownMin;
+  LBL = Object.assign({}, LBL_DEFAULT, d.labels || {});
+  if(lastWx) renderWx(lastWx[0], lastWx[1]);
   return true;
 }
 // swap new content in between slides (never mid-livestream), then restart the rotation
@@ -1347,9 +1362,9 @@ async function loadContent(){
   const id = (window.SIGNAGE_CONFIG || {}).sheetId;
   if(!id) return;
   try{
-    const names = ['Slides','Events','Ticker','Live','Settings'], tabs = {};
-    await Promise.all(names.map(async n => { try{ tabs[n] = await readTab(id, n); }catch(e){ if(n === 'Slides') throw e; } }));
-    const d = fromSheet(tabs), sig = JSON.stringify(d);
+    const t = {};
+    await Promise.all(Object.entries(RANGES).map(async ([k, rg]) => { try{ t[k] = await readRange(id, rg); }catch(e){ if(k === 'slides') throw e; } }));
+    const d = fromSheet(t), sig = JSON.stringify(d);
     if(!d.content.length || sig === contentSig) return;
     const first = !contentSig; contentSig = sig;
     try{ localStorage.setItem('wakediv-content', sig); }catch(_){}

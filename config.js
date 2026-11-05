@@ -2,5 +2,5 @@
    sheetId: the long ID in the content Sheet's link (docs.google.com/spreadsheets/d/<THIS PART>/edit).
    The Sheet must be shared "Anyone with the link: Viewer". Leave blank to show the built-in sample content. */
 window.SIGNAGE_CONFIG = {
-  sheetId: ''
+  sheetId: '1Pc9g-asbKDTelaaK9qWM7kz2qiqcjf9z3guzLDytzzU'
 };

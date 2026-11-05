@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="robots" content="noindex, nofollow">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wake Div Signage — Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,400..700;1,400..700&family=Nunito+Sans:opsz,wdth,wght@6..12,75..125,300..900&family=Montserrat:wght@400..800&display=swap" rel="stylesheet">
+<style>
+  /* Wake Forest brand: Old Gold #9E7E38 + black (primary); Athletics Gold #CEB888, Yellow #FDC314, Gray #53565A (secondary).
+     Type: Cormorant (serif) + Nunito Sans (sans; condensed width used in the ticker). */
+  :root{
+    --old-gold:#9E7E38; --gold-lt:#CEB888; --yellow:#FDC314; --gray:#53565A;
+    --ink:#000; --paper:#F5F1E8; --muted:rgba(245,241,232,.66); --line:rgba(245,241,232,.18);
+    --serif:'Cormorant', Garamond, Georgia, serif; --sans:'Nunito Sans', system-ui, sans-serif;
+    --qr:184px;
+    /* Spacing standards (1920×1080 canvas, 8px base unit)
+       window  = slide area: 80% of width (1536px) × everything above the ticker
+       side    = remaining 20% (384px): clock + weather
+       timebar = 4px rounded line across the top, 25px down, fills left→right
+       timebar = story segments with slide labels above, along the bottom of the window (28px above the ticker)
+       logo    = 78px tall, top-left of the window, 50px in / 50px down
+       content = sits 50px above the timebar labels
+       content = lower-left block, 960px wide (~60% of window), 50px above the ticker;
+                 the right ~40% of the window stays clear so the image/video reads (trailer-style)
+       upnext  = bottom-right of the window, 50px insets, right-aligned
+       pad-x   = 50px: window side insets equal top/bottom insets
+       stack   = 28–39px between kicker / headline / body / CTA */
+    --win-w:1536px; --side-w:384px; --ticker-h:64px; --pad-x:50px; --pad-bottom:50px; --content-w:960px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;background:#000;overflow:hidden;cursor:none}
+  #stage{position:absolute;width:1920px;height:1080px;transform-origin:0 0;background:var(--ink);color:var(--paper);font-family:var(--sans);overflow:hidden}
+
+  /* ---------- Livestream takeover: main window only; logo, tower, clock, weather and ticker stay ---------- */
+  #slides,#timebar{transition:opacity 1.2s ease}
+  body.is-live #slides,body.is-live #timebar{opacity:0}
+  #live{position:absolute;left:0;top:0;width:1920px;bottom:var(--ticker-h);z-index:3;opacity:0;pointer-events:none;transition:opacity 1.2s ease;background:#000}
+  body.is-live #live{opacity:1}
+  /* full-bleed 16:9 stream (1646×926) tucked behind the logo and tower; every edge feathers into the black,
+     the right edge dissolves under the tower, the bottom fade stays short so captions keep full contrast */
+  #live .lframe{position:absolute;left:0;top:0;width:1646px;height:926px;background:#000;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 3.5%,#000 84%,transparent 96%),linear-gradient(180deg,transparent 0,#000 6%,#000 93%,transparent 100%);
+    -webkit-mask-composite:source-in;mask-image:linear-gradient(90deg,transparent 0,#000 3.5%,#000 84%,transparent 96%),linear-gradient(180deg,transparent 0,#000 6%,#000 93%,transparent 100%);mask-composite:intersect}
+  /* shade behind the logo so it stays legible over bright video */
+  #live:after{content:"";position:absolute;left:0;top:0;width:900px;height:320px;pointer-events:none;
+    background:radial-gradient(ellipse 100% 100% at 0 0,rgba(0,0,0,.72) 0%,rgba(0,0,0,.4) 45%,rgba(0,0,0,0) 75%)}
+  #live iframe,#live video{width:100%;height:100%;border:0;display:block;object-fit:contain;background:#000}
+  #live video::cue{font-family:var(--sans);font-size:34px;background:rgba(0,0,0,.78);color:#fff}
+  #live .lbar{position:absolute;left:var(--pad-x);right:calc(var(--side-w) + var(--pad-x));bottom:26px;z-index:1;height:var(--ticker-h);display:flex;align-items:center;gap:26px}
+  #live .meta{margin-top:0;font-size:30px;flex:none}
+  .lsound{margin-left:auto;flex:none;display:flex;align-items:center;gap:10px;font-size:20px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .lsound svg{width:26px;height:26px}
+  /* Zoom / un-embeddable links: scan-to-join card in the stream window */
+  .lcard{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:70px;
+    background:radial-gradient(900px 600px at 30% 40%,#2a2414 0%,#0d0b06 60%,#000 100%)}
+  .lcard .kicker{margin-bottom:22px}
+  .lcard h2{font-family:var(--serif);font-weight:600;font-size:96px;line-height:.95;max-width:720px}
+  .lcard p{margin-top:22px;font-size:34px;color:var(--muted)}
+  .lcard .qt{width:340px;height:340px;background:#fff;border-radius:22px;padding:22px;flex:none}
+  .lcard .qt svg,.lcard .qt img{width:100%;height:100%;display:block}
+
+  /* ---------- Slides & panels ---------- */
+  #slides{position:absolute;left:0;top:0;bottom:var(--ticker-h);width:1920px;overflow:hidden;z-index:1}
+  .slide{position:absolute;inset:0;overflow:hidden;transform:translateX(100%);transition:transform 1.6s cubic-bezier(.7,0,.25,1)}
+  .slide.on{transform:none}
+  .slide.out{transform:translateX(-100%)}
+  .slide.noanim{transition:none}
+  .panel{position:absolute;inset:0}
+  .bg{position:absolute;inset:-2%}
+  .bg video{width:100%;height:100%;object-fit:cover;display:block}
+  .slide.on .bg{animation:drift var(--d) linear forwards}
+  @keyframes drift{from{transform:scale(1)}to{transform:scale(1.07) translate(-1%,-1%)}}
+  /* every image/video gets a uniform 30% black overlay, plus a deeper fade on the left and bottom where text sits */
+  .shade{position:absolute;inset:0;background:
+    linear-gradient(rgba(0,0,0,.3),rgba(0,0,0,.3)),
+    linear-gradient(90deg,rgba(0,0,0,.9) 0%,rgba(0,0,0,.65) 34%,rgba(0,0,0,.12) 64%,rgba(0,0,0,0) 100%),
+    linear-gradient(0deg,rgba(0,0,0,.7) 0%,rgba(0,0,0,0) 42%),
+    linear-gradient(180deg,rgba(0,0,0,.35) 0%,rgba(0,0,0,0) 18%)}
+
+  .t-gold   .bg{background:radial-gradient(1200px 800px at 75% 30%,#5c4719 0%,#231a09 45%,#000 80%)}
+  .t-night  .bg{background:radial-gradient(1100px 900px at 72% 60%,#1d2a3a 0%,#0f1520 50%,#05070a 85%)}
+  .t-ember  .bg{background:radial-gradient(1000px 800px at 80% 40%,#4e2a14 0%,#22130a 50%,#080504 85%)}
+  .t-forest .bg{background:radial-gradient(1100px 900px at 75% 50%,#1f3324 0%,#101a13 50%,#050806 85%)}
+  .t-stone  .bg{background:radial-gradient(1200px 900px at 50% 40%,#3a3c40 0%,#1c1d20 55%,#000 100%)}
+
+  .art{position:absolute;right:-120px;top:50%;width:1000px;height:1000px;transform:translateY(-50%);opacity:.7}
+  .has-video .art{display:none}
+
+  .content{position:absolute;left:var(--pad-x);bottom:calc(var(--pad-bottom) + 60px);width:var(--content-w);transform:scale(.85);transform-origin:0 100%}
+  .content h1{text-shadow:0 4px 40px rgba(0,0,0,.45)}
+  .kicker{font-size:31px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:var(--gold-lt);margin-bottom:27px;display:flex;align-items:center;gap:20px}
+  .kicker:before{content:"";width:64px;height:3px;background:var(--old-gold)}
+  h1,.datebox .d,.count-num{font-variant-numeric:lining-nums}
+  h1{font-family:var(--serif);font-weight:600;font-size:154px;line-height:.95;letter-spacing:-.01em}
+  h1 em{font-style:italic;color:var(--gold-lt);font-weight:500}
+  .body{margin-top:28px;font-size:43px;line-height:1.35;color:rgba(245,241,232,.78)}
+
+  /* entrance */
+  .slide .content > *{opacity:0;transform:translateX(70px)}
+  .slide.out .content > *{animation:outL 1.05s cubic-bezier(.5,0,.75,0) forwards}
+  @keyframes outL{from{opacity:1;transform:none}to{opacity:0;transform:translateX(-60px)}}
+  .slide.on .content > *{animation:rise 1.4s .8s cubic-bezier(.2,.7,.2,1) forwards}
+  .slide.on .content > *:nth-child(2){animation-delay:.92s}
+  .slide.on .content > *:nth-child(3){animation-delay:1.04s}
+  .slide.on .content > *:nth-child(4){animation-delay:1.16s}
+  .slide.on .content > *:nth-child(5){animation-delay:1.28s}
+  @keyframes rise{to{opacity:1;transform:none}}
+
+  /* QR CTA button — reversed (white) code + the call to action, inside one rounded outline */
+  /* QR CTA: bottom-right of the window, on the same baseline as the text block; QR at far right, text right-aligned */
+  /* --qp = padding around the QR; the corner radius equals it, so each rounded corner is concentric with the QR's corner */
+  .qrcta{--qp:28px;margin-top:39px;display:inline-flex;flex-direction:row;align-items:center;gap:22px;padding:14px 34px 14px 14px;text-align:left;border:2px solid var(--old-gold);border-radius:var(--qp);background:rgba(0,0,0,.28)}
+  .qrcta .code{width:var(--qr);height:var(--qr);flex:0 0 auto}
+  .qrcta .code svg{width:100%;height:100%;display:block}
+  /* prescribed codes usually export black-on-white: reverse to match the white-on-dark design; set qrInvert:false to show as supplied */
+  .qrcta .code .qrimg{width:100%;height:100%;display:block;object-fit:contain;filter:invert(1) grayscale(1);mix-blend-mode:screen}
+  .qrcta .code .qrimg.asis{filter:none;mix-blend-mode:normal}
+  .qrcta .qrtile{width:100%;height:100%;background:#fff;border-radius:calc(var(--qp) - 14px);padding:0;overflow:hidden;display:flex;align-items:center;justify-content:center}
+  .qrcta .qrtile svg,.qrcta .qrtile img{width:100%;height:100%;display:block;object-fit:contain}
+  /* Screens only: show the Maker's file cropped to the code + shield (wordmarks fall outside the window).
+     Window = 1220 units square at (255.39, 214.36) of the 1728 artboard: 29 modules + 0.75 module white each side. */
+  .qrcta .qrtile.crop{padding:12px}
+  .qrcta .qcrop{position:relative;width:100%;height:100%;overflow:hidden}
+  .qrcta .qcrop img.qrimg{position:absolute;width:141.639%;height:141.639%;max-width:none;left:-20.934%;top:-17.570%;object-fit:fill}
+  .qrcta .q0{font-size:22px;font-weight:900;font-stretch:75%;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);line-height:1.1}
+  .qrcta .q1{font-size:52px;font-weight:800;line-height:1.04;margin:6px 0 8px}
+  .qrcta .q1 span{display:block;white-space:nowrap}
+    .qrcta .q2 span{display:block;white-space:nowrap}
+  .qrcta .q2{font-size:30px;font-weight:700;color:var(--gold-lt);line-height:1.15}
+
+  /* countdown */
+  .count-wrap{display:flex;align-items:flex-end;gap:44px}
+  .count-num{font-family:var(--serif);font-size:360px;line-height:.78;color:var(--gold-lt);font-weight:500;letter-spacing:-.03em}
+  .count-label{font-size:48px;line-height:1.2;padding-bottom:24px;font-weight:600}
+  .count-label small{display:block;font-size:31px;color:var(--muted);margin-top:12px;font-weight:400}
+
+  /* event */
+  .event-row{display:flex;gap:34px;align-items:flex-start}
+  .datebox{flex:0 0 auto;width:200px;border:2px solid var(--old-gold);border-radius:16px;text-align:center;padding:0 0 22px;overflow:hidden;background:rgba(0,0,0,.35)}
+  .datebox .st{font-size:19px;font-weight:900;font-stretch:75%;letter-spacing:.16em;text-transform:uppercase;padding:9px 0 8px;margin-bottom:14px}
+  .datebox .st.upcoming{background:var(--old-gold);color:#000}
+  .datebox .st.recap{background:var(--paper);color:#000}
+  .datebox .st.recap:before{content:"▶ "}
+  .datebox .m{font-size:27px;font-weight:800;letter-spacing:.2em;color:var(--gold-lt)}
+  .datebox .d{font-family:var(--serif);font-size:125px;line-height:1;font-weight:600}
+  .datebox .w{font-size:23px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;font-weight:700}
+  .event-row h1{font-size:125px;margin-top:-18px}
+  .meta{margin-top:24px;font-size:38px;color:var(--muted);display:flex;align-items:baseline;gap:28px}
+  .meta b{color:var(--paper);font-weight:700}
+  .meta .sep{display:inline-block;width:2px;height:1.15em;background:currentColor;opacity:.45;margin:0 -6px;
+    /* box bottom sits on the baseline; drop it so its middle lands at half the x-height = middle of the small caps */
+    position:relative;top:calc((1.15em - 1ex) / 2)}
+  /* location: all small caps, so its capitals sit at the time's x-height */
+  .meta .loc{text-transform:uppercase;font-size:calc(1em * var(--x2cap,.69));letter-spacing:.1em;font-weight:700}
+  .badge{display:inline-block;margin-top:6px;font-size:24px;font-weight:900;font-stretch:75%;letter-spacing:.16em;text-transform:uppercase;padding:8px 16px;border-radius:8px;margin-bottom:22px}
+  .badge.upcoming{background:var(--old-gold);color:#000}
+  .badge.recap{background:var(--paper);color:#000}
+  .badge.recap:before{content:"▶ "}
+  .pg{display:flex;align-items:center;gap:12px;margin-left:24px}
+  .pg i{width:36px;height:5px;border-radius:3px;background:var(--line)}
+  .pg i.cur{background:var(--gold-lt)}
+  .pg span{margin-left:8px;color:var(--muted);letter-spacing:.12em}
+
+  /* quote */
+    .quote h1{font-style:italic;font-size:91px;line-height:1.12;font-weight:500}
+  .quote .body{margin-top:31px;color:var(--gold-lt);letter-spacing:.16em;text-transform:uppercase;font-size:31px;font-weight:800}
+
+  /* spotlight */
+    .spotlight h1{font-size:110px}
+  /* spotlight: the student's photo/video fills the window; placeholder label shows where */
+  .ph-note{position:absolute;right:120px;top:50%;transform:translateY(-50%);font-size:22px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-align:center;line-height:1.8;border:2px dashed var(--line);padding:40px 56px;border-radius:16px}
+
+  /* ---------- Time bar: thin rounded line across the top, fills left to right ---------- */
+  /* soft black fade behind the story bar so labels read on bright images/video */
+  .barshade{position:absolute;left:0;width:var(--win-w);bottom:0;height:220px;pointer-events:none;
+    background:linear-gradient(0deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.45) 35%,rgba(0,0,0,0) 100%)}
+  /* story-style progress: one segment per slide — done = full, current = filling left→right, upcoming = empty */
+  #timebar{position:absolute;left:var(--pad-x);right:calc(var(--side-w) + var(--pad-x));bottom:calc(var(--ticker-h) + 28px);z-index:7;display:flex;gap:8px}
+  #timebar .tseg{flex:1;min-width:0}
+  #timebar .trk{height:4px;border-radius:4px;background:rgba(245,241,232,.18);overflow:hidden}
+  #timebar .trk i{display:block;height:100%;width:0;border-radius:4px;background:var(--gold-lt)}
+  #timebar .tseg.done .trk i{width:100%}
+  #timebar .tseg.now .trk i{animation:grow var(--d) linear forwards}
+  /* each segment is labeled with its slide: active 90% opacity, the rest 50% */
+  #timebar .tl{display:block;text-align:center;margin-bottom:10px;font-size:17px;font-weight:800;font-stretch:75%;letter-spacing:.08em;text-transform:uppercase;line-height:1;color:var(--paper);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.5;transition:opacity .6s ease;text-shadow:0 1px 10px rgba(0,0,0,.6)}
+  #timebar .tseg.now .tl{opacity:.9}
+  @keyframes grow{from{width:0%}to{width:100%}}
+
+  /* ---------- Side column: clock + weather ---------- */
+  #side{position:absolute;right:0;top:0;bottom:var(--ticker-h);width:var(--side-w);background:transparent;z-index:5;overflow:visible;display:flex;flex-direction:column;align-items:center;padding:40px 32px var(--sg) 34px;--sg:32px}
+
+  /* ---------- Up Next: bottom-right of the main window, right-aligned, 75% ---------- */
+
+  /* ---------- Weather (one group, two sub-groups) ----------
+     All numbers: Cormorant Garamond in gold — full strength for primary values, dimmer gold for secondary (lows, hours).
+     Now: icon | current temp | high / low ; rain chance left of the graph (temp line above rain bars) ; hours.
+     Tomorrow: one compact row — icon | high / low | rain chance at far right. */
+  #wxw{font-family:'Montserrat',var(--sans);position:relative}
+  #wxw *{font-stretch:normal!important}
+  #wxw .num{font-family:var(--serif);font-variant-numeric:lining-nums;color:var(--gold-lt);font-weight:600}
+  #wxw .dim{color:rgba(206,184,136,.55)}
+  #wxw .sample{position:absolute;right:0;top:24px;font-size:12px;font-weight:700;letter-spacing:.1em;color:#000;background:var(--muted);padding:2px 6px;border-radius:4px;text-transform:uppercase;z-index:2}
+  #wxw .lab{font-size:15px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;line-height:1;margin-bottom:14px;color:var(--muted)}
+  #wxw .hdr{display:flex;align-items:flex-end;gap:14px}
+  #wxw .hdr > svg{align-self:center}
+  #wxw .hdr svg{flex:0 0 auto;width:var(--ih);height:var(--ih);margin:calc((var(--dh) - var(--ih))/2) -6px}
+  /* --dh = numeral height; the icon box is larger because its artwork fills ~75% of the box */
+  #wxw .t0{--dh:58px; --ih:77px}
+  #wxw .t1{--dh:32px; --ih:43px; margin-top:var(--sg)}
+  /* divider: same 3px gold rule as the one above the weather, at 50% opacity.
+     Sidebar rhythm --sg (32px) = bottom padding = space above/below both rules */
+  #wxw .t1::before{content:"";display:block;height:3px;margin-bottom:var(--sg);background:rgba(206,184,136,.8);opacity:.5}
+  #wxw .t0 .temp{font-size:94px;line-height:.62;color:var(--paper)}
+  #wxw .hl{display:flex;align-items:baseline;gap:6px;margin-left:auto;line-height:.62;white-space:nowrap;padding-bottom:2px}
+  #wxw .hl .num{font-size:36px}
+  #wxw .hl .sl{font-family:var(--serif);font-size:36px;color:rgba(206,184,136,.55)}
+  #wxw .t1 .pair{font-size:52px;line-height:.62}
+  #wxw .t1 .rain{margin-left:auto;display:flex;align-items:flex-end;gap:6px}
+  #wxw .t1 .rain .num{font-size:44px;line-height:.62}
+  #wxw .graph{position:relative;margin-top:26px;display:grid;grid-template-columns:1fr auto;column-gap:14px;align-items:end}
+  #wxw .gcol{min-width:0;position:relative}
+  /* current-position dot on the temperature line: 50% larger, white glow; drawn as HTML so it stays perfectly round */
+  #wxw .ndot{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#CEB888;border:2px solid #050505;z-index:3;
+    box-shadow:0 0 0 1px rgba(255,255,255,.35),0 0 10px 3px rgba(255,255,255,.7),0 0 22px 6px rgba(255,255,255,.3)}
+  #wxw .tline{display:block;width:100%;height:26px;overflow:visible;position:relative;z-index:2}
+  #wxw .pzone{position:relative;height:48px}
+  #wxw .bars{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:flex-end;gap:3px;height:46px;border-bottom:1px solid var(--line)}
+  #wxw .bars i{flex:1;background:#9DC0EA;border-radius:2px 2px 0 0;min-height:2px}
+  #wxw .bars i.pk{background:#CFE2F7}
+  #wxw .bars i.past{opacity:.25}
+  #wxw .nowm{position:absolute;bottom:0;top:-10px;width:2px;background:var(--gold-lt);border-radius:1px}
+  #wxw .t0 .rain{display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-end;padding-bottom:27px}
+  #wxw .rl{display:flex;align-items:center;gap:4px;font-size:12px;font-weight:800;letter-spacing:.14em;margin-bottom:8px;color:rgba(157,192,234,.85)}
+  #wxw .t0 .rain .num{font-size:46px;line-height:.62}
+  #wxw .rain .num{color:#9DC0EA}
+  #wxw .pct{font-size:.55em;margin-left:1px}
+  #wxw .axis{display:flex;justify-content:space-between;margin-top:6px;font-size:19px}
+
+  /* ---------- Ticker (same footprint; condensed bold, +10%) ---------- */
+  #ticker{position:absolute;left:0;right:0;bottom:0;height:var(--ticker-h);background:#000;border-top:2px solid var(--old-gold);display:flex;align-items:center;z-index:6;
+    font-stretch:75%;font-weight:800}
+  /* countdown to the next livestream, left of the Announcements label */
+  /* countdown block, inline in the ticker: gentle top-lit gradient + bevel for a soft 3D read */
+  #soon{flex:0 0 auto;height:100%;display:none}
+  body.soon #soon{display:flex}
+  /* live label: the same countdown bar, floated into the stream's lower-left corner */
+  /* live label: the countdown bar itself, lifted straight up to sit on the ticker, then stretched to the chapel sidebar edge */
+  #livetab{position:absolute;left:0;bottom:var(--ticker-h);height:var(--ticker-h);width:calc(1920px - var(--side-w));max-width:none;z-index:7;
+    opacity:0;pointer-events:none;transition:transform 1.1s cubic-bezier(.45,0,.25,1),width 1.1s cubic-bezier(.45,0,.25,1),opacity .8s ease}
+  body.is-live #livetab{opacity:1}
+  #livetab.flying{transition:none}
+  /* stream ends: drop straight down behind the ticker (ticker sits above at z 6), fading once it's mostly tucked away */
+  #livetab.dropping{z-index:5;transform:translateY(var(--ticker-h));opacity:0;
+    transition:transform 1.1s cubic-bezier(.45,0,.55,1),opacity .6s ease .6s}
+  /* the glimmer is a countdown cue only: it stops once the stream is live */
+  #livetab:after{content:none;animation:none}
+  #livetab .sep{display:inline-block;width:2px;height:36px;background:#7A5F22;opacity:.45;flex:none;margin:0 -4px}
+  #livetab .loc{font-size:calc(36px * var(--x2cap,.69));font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#6B6458;white-space:nowrap;line-height:1}
+  #livetab .lsound{margin-left:auto;color:#6B6458}
+  #livetab .st{flex-shrink:0;max-width:640px}
+  /* counter box: value stays left-aligned; on a minute change (and 0:01 → NOW) the old value slides out left, clipped at the box edge */
+  .ctab .sc,.ctab .dg{position:relative;display:inline-flex;align-items:center;text-transform:uppercase}
+  .ctab .cv{display:inline-flex;align-items:center;gap:.32em}
+  .ctab .cv .ci{color:#7A5F22}
+  .ctab b{font-weight:900;color:#000}
+  /* rolls never clip: the old value drifts left as it fades to 0, then the new one drifts in from the right as it fades up */
+  .ctab .out{position:absolute;left:0;top:0;animation:rollOut .8s cubic-bezier(.45,0,.55,1) forwards}
+  .ctab .in{animation:rollIn .9s cubic-bezier(.25,.8,.35,1) .35s both}
+  @keyframes rollOut{0%{opacity:1;transform:none}55%{opacity:0}100%{opacity:0;transform:translateX(-.45em)}}
+  @keyframes rollIn{0%{opacity:0;transform:translateX(.6em)}100%{opacity:1;transform:none}}
+  /* location waits until the bar settles: the divider fades in, then the words slide out from behind it */
+  #livetab .locw{display:inline-flex;align-items:center}
+  #livetab .sep{opacity:0;transition:opacity .8s ease}
+  #livetab .loc{display:inline-block;opacity:0;transform:translateX(-.45em);transition:transform 1.1s cubic-bezier(.25,.8,.35,1) .3s,opacity 1.1s ease .3s}
+  #livetab .lsound{opacity:0;transform:translateX(.45em);transition:transform 1.1s cubic-bezier(.25,.8,.35,1) .5s,opacity 1.1s ease .5s}
+  #livetab.show .sep{opacity:.45}
+  #livetab.show .loc,#livetab.show .lsound{transform:none;opacity:1}
+  /* the countdown's slot empties the moment the bar lifts off, then closes up as the ticker slides left */
+  #soon.vacant{background:none;box-shadow:none}
+  #soon.vacant>*,#soon.vacant:after{visibility:hidden}
+  #soon.collapse{transition:width 1.1s cubic-bezier(.45,0,.25,1),padding 1.1s cubic-bezier(.45,0,.25,1);padding-left:0;padding-right:0}
+  /* one type spec for the countdown and the live bar, wherever they sit (the ticker's condensed width is set here, not inherited) */
+  .ctab{font-family:var(--sans);font-stretch:75%;font-weight:900;font-style:normal;display:flex;align-items:center;gap:20px;padding:0 30px 0 34px;max-width:1100px;position:relative;z-index:2;
+    background:linear-gradient(180deg,#FFFFFF 0%,#F6F3EC 38%,#E6DFD0 82%,#D6CDB9 100%);
+    box-shadow:inset 0 2px 0 rgba(255,255,255,.95),inset 0 -3px 6px rgba(120,100,60,.22),inset -1px 0 0 rgba(120,100,60,.25),4px 0 14px rgba(0,0,0,.45)}
+  /* glimmer: a wide, soft diagonal band of light sweeps left→right across the countdown every 5s */
+  .ctab{overflow:hidden}
+  .ctab:after{content:"";position:absolute;top:-20%;bottom:-20%;width:380px;pointer-events:none;
+    background:linear-gradient(100deg,rgba(255,255,255,0) 0%,rgba(255,255,255,.12) 22%,rgba(255,255,255,.42) 40%,rgba(255,255,255,.6) 50%,rgba(255,255,255,.42) 60%,rgba(255,255,255,.12) 78%,rgba(255,255,255,0) 100%);
+    left:-420px;transform:skewX(-18deg);animation:glimmer 5s cubic-bezier(.45,0,.55,1) infinite}
+  /* sweep takes 2.6s (half the old speed), then rests until the next 5s cycle */
+  @keyframes glimmer{0%{left:-420px}52%{left:calc(100% + 60px)}100%{left:calc(100% + 60px)}}
+  .ctab .sl,.ctab .st{font-size:36px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:#7A5F22;white-space:nowrap;line-height:1}
+  /* title → LIVE uses the same word space as LIVE → IN (.32em), cancelling the tab's 20px item gap */
+  .ctab .st{overflow:hidden;text-overflow:ellipsis;min-width:0;margin-right:calc(.32em - 20px)}
+  .ctab .sl{display:flex;align-items:center;gap:.32em}
+  /* LIVE reads as letters cut out of the white bar with a red gel lit from behind: an engraved edge, and a glow that strobes dark → bright */
+  .ctab .lv{color:#5E0B0E;animation:gel 1.4s ease-in-out infinite alternate}
+  @keyframes gel{
+    0%  {color:#5E0B0E;text-shadow:0 1px 0 rgba(255,255,255,.9),0 -1px 0 rgba(0,0,0,.35)}
+    100%{color:#FF3A34;text-shadow:0 1px 0 rgba(255,255,255,.9),0 -1px 0 rgba(90,0,0,.25),0 0 6px rgba(255,70,50,.95),0 0 16px rgba(255,40,30,.75),0 0 30px rgba(255,30,20,.45)}}
+  /* countdown numbers: same style as LIVE IN, same word space before them; tabular figures so the line doesn't shift each second */
+  .ctab .sc{font-size:36px;font-weight:900;letter-spacing:.14em;color:#000;line-height:1;white-space:nowrap;font-variant-numeric:tabular-nums;margin-left:calc(.32em - 20px)}
+  #brand{flex:0 0 auto;height:100%;display:flex;align-items:center;padding:0 31px 0 34px;background:var(--old-gold);
+    font-size:20px;font-weight:900;font-stretch:75%;letter-spacing:.12em;text-transform:uppercase;color:#F4E7C5}
+  /* official reversed lockup (gold shield + white wordmark), top-left of the window on the content grid */
+  #logo{position:absolute;left:var(--pad-x);top:50px;height:78px;width:auto;z-index:6;filter:drop-shadow(0 2px 16px rgba(0,0,0,.5))}
+  #marquee{flex:1;overflow:hidden;height:100%;display:flex;align-items:center;mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
+  #track{display:flex;white-space:nowrap;animation:scroll linear infinite;will-change:transform}
+  #track span{font-size:26px;font-weight:800;padding:0 26px;display:flex;align-items:center}
+  #track span.sep{color:var(--old-gold);padding:0;font-size:18px}
+  #track span.hot b{background:var(--yellow);color:#000;font-weight:900;margin-right:14px;letter-spacing:.1em;font-size:18px;padding:3px 8px;border-radius:5px}
+  @keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  /* clock: large, in the sidebar above the weather */
+  /* digital time and calendar box share one height (--ch = measured height of the time's digits) */
+  #clockrow{display:flex;align-items:center;justify-content:space-between;gap:14px}
+  #clock{font-family:var(--serif);color:var(--paper);font-size:110px;font-weight:600;line-height:1;font-variant-numeric:lining-nums tabular-nums;white-space:nowrap;display:flex;align-items:flex-end}
+  #clock .hm{display:block;height:var(--ch);line-height:1;overflow:visible}
+  #clock .hm span{display:inline-block;transform:translateY(var(--chy))}
+  #clock .ap{font-size:26px;margin:0 0 -1px 6px;font-weight:600;color:rgba(206,184,136,.7);line-height:.72}
+  /* calendar box: one padding value (--p) everywhere — around the month label, above the date, between date and weekday,
+     below the weekday, and on the left/right. Line-heights are trimmed to the glyphs so the gaps read as truly equal. */
+  /* sidebar date box — same style as the event date box: gold outline on dark,
+     gold month caps, white Cormorant date, muted weekday caps. One padding value (--p) throughout. */
+  .cal{--p:calc(var(--ch)*.12);flex:0 0 auto;border:2px solid var(--old-gold);border-radius:12px;overflow:hidden;background:rgba(0,0,0,.35);text-align:center;display:flex;flex-direction:column}
+  .cal .cm{color:var(--gold-lt);font-size:calc(var(--ch)*.22);font-weight:800;letter-spacing:.18em;line-height:.72;padding:var(--p) var(--p) 0}
+  .cal .cd{font-family:var(--serif);font-variant-numeric:lining-nums;color:var(--paper);font-size:calc(var(--ch)*.6);font-weight:600;line-height:.6;padding:var(--p) var(--p) 0}
+  .cal .cw{color:var(--muted);font-size:calc(var(--ch)*.19);font-weight:700;letter-spacing:.12em;line-height:.72;padding:var(--p)}
+  #sidebot{position:absolute;left:34px;top:0;width:356px;display:flex;flex-direction:column;transform-origin:0 0;will-change:transform}
+  /* analog clock: transparent tower-style face, top of sidebar, sweeping seconds */
+  #analog{position:absolute;width:250px;height:250px;left:0;top:0;transform-origin:0 0}
+  /* sidebar shape: left edge traced from Wait Chapel's steeple (dusk photo), zoomed so the clock stage frames the clock.
+     Accurate profile: cornice above the clock stage, clock stage, corner urns, heavy lower cornice, entablature band, brick shaft.
+     Belfry/spire crop off the top. The brick shaft meets the main window at the usual 1536px line. */
+  #tower{position:absolute;left:0;top:0;width:1920px;height:calc(1080px - var(--ticker-h));z-index:4;pointer-events:none}
+  #analog svg{width:100%;height:100%;display:block;overflow:visible}
+  #sidebot #wxw{flex:0 0 auto;margin-top:var(--sg);padding-top:var(--sg);border-top:3px solid rgba(206,184,136,.8)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="slides"></div>
+  <div id="timebar"></div>
+  <div id="live" aria-live="polite"></div>
+  <div id="livetab" class="ctab" aria-live="polite"></div>
+  <img id="logo" src="logo.png" alt="Wake Forest University School of Divinity">
+  <svg id="tower" viewBox="0 0 1920 1016"></svg>
+  <div id="side">
+    <div id="analog"></div>
+    <div id="sidebot">
+    <div id="clockrow"><div id="clock"></div><div class="cal"><div class="cm" id="calm"></div><div class="cd" id="cald"></div><div class="cw" id="calw"></div></div></div>
+    <div id="wxw">
+      <div class="t0" id="wday0"></div>
+      <div class="t1" id="wday1"></div>
+    </div>
+    </div>
+  </div>
+  <div id="ticker">
+    <div id="soon" class="ctab" aria-live="polite"><span class="st" id="soont"></span><span class="sl"><span class="lv">Live</span></span><span class="sc" id="soonc"></span></div>
+    <div id="brand">Announcements</div>
+    <div id="marquee"><div id="track"></div></div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="lib/qrcode-generator.js"></script>
+<script src="lib/qrcode.js"></script>
+<script src="lib/jsQR.js"></script>
+<script src="lib/zxing.min.js"></script>
+<script src="lib/maker.js"></script>
+<script>
+/* =====================================================================
+   CONTENT — placeholder copy, dates, links and videos.
+   In production this list comes from a shared Google Sheet so DMC (and
+   anyone you grant edit access) can update it without touching code.
+     screens  → which TVs show the item (rotunda / admissions / auditorium)
+     video    → optional ~10s muted loop behind the text
+     qrCode   → the DMC QR system ID for this CTA (e.g. 6D1). Image: qr/6D1.png · link: HTTPS://GO.WFU.EDU/div6d1
+     cta      → the prompt beside it ("Scan to · Apply now"); ctaSub is the line under it
+     type:'events' → one story that rolls through several events
+   ===================================================================== */
+let CONTENT = [
+  { type:'promo', screens:['rotunda'], theme:'forest', duration:10,
+    kicker:'Welcome', title:'Welcome to<br><em>Wake Div.</em>',
+    body:'Where faith, justice, and imagination meet.', cta:'Plan a visit', ctaSub:'Admissions Suite, 2nd Floor',
+    qrCode:'6D1', thumb:'Welcome to Wake Div' },
+
+  { type:'promo', screens:['rotunda','admissions'], theme:'gold', duration:10, video:'media/bg-gold.mp4',
+    kicker:'Master of Arts in Religion', title:"The world <em>can't</em> wait.",
+    body:'Prepare to lead with purpose in ministry, nonprofits, and public life.', cta:'Apply now', ctaSub:'divinity.wfu.edu',
+    qrCode:'6D2', thumb:"The world can't wait." },
+
+  { type:'countdown', screens:['admissions'], theme:'ember', duration:10,
+    kicker:'Admissions', deadline:'2027-01-15', label:'days until the<br>priority deadline',
+    sub:'[Placeholder date] Includes scholarship consideration',
+    qrCode:'6D3', cta:'Apply now', ctaSub:'divinity.wfu.edu', thumb:'Deadline countdown' },
+
+  { type:'spotlight', screens:['admissions'], theme:'stone', duration:10,
+    kicker:'Answering the Call', title:'“[Short student quote goes here.]”',
+    body:'[Student Name]<br>Master of Arts in Religion ’27',
+    qrCode:'6D4', cta:'Read the story', thumb:'[Student Name]’s story' },
+
+  { type:'quote', screens:['rotunda','auditorium'], theme:'stone', duration:10,
+    kicker:'Word for the Week', title:'“He hath shewed thee, O man, what is good; and what doth the LORD require of thee, but to do justly, and to love mercy, and to walk humbly with thy God?”',
+    body:'Micah 6:8',
+    qrCode:'6D5', cta:'Read the reflection', thumb:'Micah 6:8' },
+
+  { type:'events', screens:['rotunda','admissions','auditorium'], theme:'night', per:10,
+    kicker:'Happening at Wake Div', thumb:'Upcoming Events',
+    events:[
+      { status:'upcoming', date:'2026-11-05', title:'Community Worship', time:'Thu · 11:00 AM', place:'Lower Auditorium',
+        qrCode:'6D6', cta:'Add to calendar' },
+      { status:'upcoming', date:'2026-11-18', title:'Admissions Info Session', time:'12:00 PM', place:'[Location]',
+        qrCode:'6D7', cta:'Register', ctaSub:'For prospective students', video:'media/bg-night.mp4' },
+      { status:'recap', date:'2026-10-24', title:'[Fall Lecture] Recap', time:'Highlights', place:'2 min video',
+        qrCode:'6D8', cta:'Watch the recap', video:'media/bg-gold.mp4' },
+    ] },
+
+  { type:'promo', screens:['auditorium'], theme:'ember', duration:10,
+    kicker:'Student Life', title:'Lunch &amp; <em>Learn</em>',
+    body:'[Placeholder] Bring your lunch, join the conversation. All students welcome.', cta:'Save your seat', ctaSub:'Wednesdays · 12:30 PM',
+    qrCode:'6D9', thumb:'Lunch & Learn' },
+];
+
+let TICKER = [
+  { text:'Pro Humanitate' },
+  { hot:'Now', text:'Applications open for Fall 2027 · divinity.wfu.edu' },
+  { text:'Thursday Community Worship · 11:00 AM · Lower Auditorium' },
+  { hot:'Reminder', text:'[Placeholder announcement] Registration closes Friday' },
+  { text:'Follow @WakeDiv for stories from our community' },
+];
+
+/* LIVE — livestream takeovers (becomes the Sheet's "Live" tab: Title | Stream URL | Start | End | Screens | Mode | Location | QR code).
+   Mode: auto = on between Start and End · on = force it live now · off = ignore this row.
+   Stream URL: a YouTube video/live link or channel link (youtube.com/channel/UC…), a direct .m3u8 or .mp4 stream,
+   another player's EMBED link (BoxCast, Panopto…), or a Zoom link (Zoom can't play on a screen: shows a scan-to-join card).
+   Sound: on (default) / off for that event. */
+let LIVE = [
+  { title:'Community Worship', url:'https://www.youtube.com/live/[VIDEO_ID]', start:'2026-11-05 11:00', end:'2026-11-05 12:00',
+    screens:['rotunda','admissions','auditorium'], mode:'off', place:'Wait Chapel', sound:'on' },
+];
+// Livestream venues (the Live tab's Location dropdown). Left: what's picked in the sheet · right: what the screens show.
+// "Other" rows show whatever is typed.
+const VENUES = {
+  'Wait Chapel':'Wait Chapel',
+  'Davis Chapel':'Davis Chapel',
+  'Kulynych Auditorium':'Kulynych Auditorium · Byrum Welcome Center',
+};
+const venue = p => (p && VENUES[String(p).trim()]) || p || '';
+// Settings tab: "Sound on screens" — which screens may play livestream audio. Each device must also allow autoplay with sound.
+let SOUND_SCREENS = ['rotunda','admissions','auditorium'];
+// Settings tab: "Countdown minutes" — the ticker shows LIVE IN mm:ss this long before a scheduled stream.
+let COUNTDOWN_MIN = 60;
+// preview only (press L, or add ?live=demo): a local clip stands in for a stream
+const LIVE_DEMO = { title:'Community Worship', url:'media/bg-night.mp4', place:'Wait Chapel', demo:true };
+// preview only (press C, or add ?soon=demo): a stream scheduled 42 minutes out
+let SOON_DEMO = null;
+
+const CHANNELS = { rotunda:'Rotunda Lobby', admissions:'Admissions Lounge', auditorium:'Lower Auditorium' };
+let WX = { lat:36.0999, lon:-80.2442 }; // Winston-Salem
+
+/* ===================================================================== */
+const $ = s => document.querySelector(s);
+const stage = $('#stage');
+function fit(){
+  const s = Math.min(innerWidth/1920, innerHeight/1080);
+  stage.style.transform = `scale(${s})`;
+  stage.style.left = (innerWidth - 1920*s)/2 + 'px';
+  stage.style.top  = (innerHeight - 1080*s)/2 + 'px';
+}
+addEventListener('resize', fit); fit();
+
+const MON = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function parseWhen(v){
+  if(v instanceof Date) return v;
+  const t = String(v || '').trim(); if(!t) return null;
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?)?$/);
+  let y, mo, d, h = 0, mi = 0, se = 0, ap;
+  if(m){ [, y, mo, d, h = 0, mi = 0, se = 0, ap] = m; }
+  else if((m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:,?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?)?$/))){ [, mo, d, y, h = 0, mi = 0, se = 0, ap] = m; if(+y < 100) y = 2000 + +y; }
+  else { const x = new Date(t); return isNaN(x) ? null : x; }
+  h = +h; if(ap){ ap = ap.toLowerCase(); if(ap === 'pm' && h < 12) h += 12; if(ap === 'am' && h === 12) h = 0; }
+  return new Date(+y, +mo - 1, +d, h, +mi, +se);
+}
+const ymd = s => parseWhen(s) || new Date();
+let channel = 'admissions';
+
+/* QR as inline SVG (no outside service needed). Adds tracking tags so scans show up in web analytics by screen. */
+/* ── DMC QR system ──
+   Every CTA uses a code ID from the DMC QR system: year digit + type letter + number (signage = D, Display), e.g. 6D1.
+   The page shows the branded code image exported for that ID (qr/6D1.png — WAKE FOREST / shield / DIVINITY, pure #000000),
+   untouched, on a white tile. If the image is missing it falls back to a plain code for the same go link:
+   HTTPS://GO.WFU.EDU/div6d1  (capitalized scheme + host, lowercase path). No tracking parameters are ever added.
+   (Older notes below kept for reference.)
+   QR codes: the PRESCRIBED code from the QR tracking system is always preferred.
+   qrImage → the exact image exported from the tracking system (PNG/SVG); shown untouched except reversed to white-on-dark
+   qr      → fallback only: a link encoded exactly as given (no extra tracking parameters added) */
+const QR_DIR = 'qr/';
+const goLink = id => 'HTTPS://GO.WFU.EDU/div' + String(id).toLowerCase();
+function qrSVG(url, ink){
+  const u = url;
+  const q = qrcode(0,'M'); q.addData(u); q.make();
+  const n = q.getModuleCount(); let d = '';
+  for(let r=0;r<n;r++) for(let c=0;c<n;c++) if(q.isDark(r,c)) d += `M${c} ${r}h1v1h-1z`;
+  return `<svg viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges"><path d="${d}" fill="${ink||'#fff'}"/></svg>`;
+}
+
+/* Branded QR fallback chain. Generated codes are cached so each runs the scan tests once per device. */
+const QR_GEN = {};
+function qrBranded(code){
+  if(QR_GEN[code]) return QR_GEN[code];
+  const key = 'wakediv-qr:' + code;
+  const job = async () => {
+    try { const s = localStorage.getItem(key); if(s) return s; } catch(e){}
+    const r = await MAKER.build(code);
+    if(!r) return null;
+    try { localStorage.setItem(key, r.svg); } catch(e){}
+    return r.svg;
+  };
+  // one code at a time, so a slow screen device isn't asked to scan-test several codes at once
+  return QR_GEN[code] = (qrBranded.queue = (qrBranded.queue || Promise.resolve()).then(job).catch(() => null));
+}
+function qrMiss(img){
+  const tile = img.closest('.qrtile'); if(!tile) return;
+  const code = tile.dataset.code;
+  img.style.visibility = 'hidden';
+  if(!img.dataset.step){ img.dataset.step = 'png'; img.src = QR_DIR + code + '.png'; return; }
+  img.onerror = null;
+  qrBranded(code).then(svg => { if(!svg) return;
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); img.dataset.step = 'made'; });
+}
+document.addEventListener('load', e => { if(e.target.classList && e.target.classList.contains('qrimg')) e.target.style.visibility = ''; }, true);
+const ART = `<svg class="art" viewBox="0 0 1000 1000" fill="none" stroke="#9E7E38">
+  ${[480,400,320,240,160].map((r,i)=>`<circle cx="500" cy="500" r="${r}" stroke-opacity="${.18+i*.07}" stroke-width="1.5"/>`).join('')}
+  <path d="M500 20 V980 M20 500 H980" stroke-opacity=".16"/></svg>`;
+
+/* A slide is one or more panels. 'events' becomes one panel per event. */
+function panelsOf(c){
+  if(c.type!=='events') return [c];
+  const today = new Date(); today.setHours(0,0,0,0);
+  const evs = c.events.filter(e => (!e.screens || e.screens.includes(channel)) && !(e.status !== 'recap' && ymd(e.date) < today));
+  return evs.map((e,i)=>({ ...e, type:'event', theme:e.theme||c.theme, kicker:c.kicker, duration:c.per||10, _i:i, _n:evs.length, _all:evs }));
+}
+
+function qrBtn(p){
+  if(!p.qrCode && !p.qr && !p.qrImage) return '';
+  let code;
+  if(p.qrCode){
+    // the Maker's own export: qr/<ID>.svg, then qr/<ID>.png; if neither is uploaded yet, the Maker's generator draws it here
+    code = `<img src="${p.qrImage || QR_DIR + p.qrCode + '.svg'}" alt="QR ${p.qrCode}" class="qrimg asis" onerror="qrMiss(this)">`;
+    code = `<div class="qrtile crop" data-code="${String(p.qrCode).toUpperCase()}"><div class="qcrop">${code}</div></div>`;
+  } else code = p.qrImage ? `<img src="${p.qrImage}" alt="" class="qrimg ${p.qrInvert===false?'asis':''}">` : qrSVG(p.qr);
+  // break the prompt onto two lines (first half of the words / the rest) to keep the button narrow
+  const split = t => { const w = t.split(' '), k = Math.ceil(w.length/2);
+    return w.length > 1 ? `<span>${w.slice(0,k).join(' ')}</span><span>${w.slice(k).join(' ')}</span>` : `<span>${t}</span>`; };
+  // prompt on two lines, subhead also wrapped onto two lines
+  return `<div class="qrcta"><div class="code">${code}</div><div><div class="q0">Scan to</div>
+    <div class="q1">${split(p.cta)}</div>${p.ctaSub?`<div class="q2">${split(p.ctaSub)}</div>`:''}</div></div>`;
+}
+function contentHTML(p){
+  if(p.type==='promo') return `<div class="kicker">${p.kicker}</div><h1>${p.title}</h1>
+      ${p.body?`<p class="body">${p.body}</p>`:''}${qrBtn(p)}`;
+  if(p.type==='countdown'){
+    const days = Math.max(0, Math.ceil((ymd(p.deadline) - new Date())/864e5));
+    return `<div class="kicker">${p.kicker}</div><div class="count-wrap"><div class="count-num">${days}</div>
+      <div class="count-label">${p.label}<small>${p.sub||''}</small></div></div>${qrBtn(p)}`;
+  }
+  if(p.type==='event'){
+    const d = ymd(p.date);
+    return `      <div class="event-row"><div class="datebox"><div class="st ${p.status||'upcoming'}">${p.status==='recap'?'ICYMI':'Upcoming'}</div><div class="m">${MON[d.getMonth()]}</div><div class="d">${d.getDate()}</div><div class="w">${DOW[d.getDay()]}</div></div>
+      <div><h1>${p.title}</h1><div class="meta"><span><b>${p.time}</b></span>${p.place?`<span class="sep" aria-hidden="true"></span><span class="loc">${venue(p.place)}</span>`:''}</div></div></div>${qrBtn(p)}`;
+  }
+  if(p.type==='quote' || p.type==='spotlight') return `<div class="kicker">${p.kicker}</div><h1>${p.title}</h1><p class="body">${p.body}</p>${qrBtn(p)}`;
+  return '';
+}
+
+function panelHTML(p){
+  const bg = p.video ? `<div class="bg"><video src="${p.video}" muted loop playsinline preload="auto"></video></div>`
+    : p.image ? `<div class="bg" style="background:url('${p.image}') center/cover no-repeat"></div>` : `<div class="bg"></div>`;
+  return `<div class="panel t-${p.theme} ${p.video||p.image?'has-video':''}" data-d="${p.duration||9}">
+    ${bg}${ART}<div class="shade"></div><div class="barshade"></div>
+    ${p.type==='spotlight' && !p.video && !p.image?'<div class="ph-note">Full-bleed student<br>photo or video</div>':''}
+    <div class="content">${contentHTML(p)}</div>
+  </div>`;
+}
+
+let seq = [], idx = -1, timer = null;
+const strip = h => h.replace(/<br>/g,' ').replace(/<[^>]+>/g,'').replace(/&amp;/g,'&');
+
+/* Size the location's capitals so their height equals the time's x-height, measured from the font actually loaded. */
+function fitSmallCaps(){
+  const b = document.querySelector('.meta b'); if(!b) return;
+  const f = getComputedStyle(b), c = document.createElement('canvas').getContext('2d');
+  c.font = `${f.fontWeight} 400px ${f.fontFamily}`;
+  const x = c.measureText('x').actualBoundingBoxAscent;
+  c.font = `700 400px ${f.fontFamily}`;
+  const H = c.measureText('H').actualBoundingBoxAscent;
+  if(x && H) document.documentElement.style.setProperty('--x2cap', (x / H).toFixed(4));
+}
+if(document.fonts) document.fonts.ready.then(fitSmallCaps);
+
+function build(){
+  channel = CHANNELS[location.hash.slice(1)] ? location.hash.slice(1) : 'admissions';
+  // every story (and every event inside the events story) becomes one slide window
+  seq = CONTENT.filter(c => c.screens.includes(channel)).flatMap(c => panelsOf(c).map(p => ({ p, c })));
+  $('#slides').innerHTML = seq.map(({p,c})=>`<section class="slide ${c.type}">${panelHTML(p)}</section>`).join('');
+  idx = -1;
+  fitAll();
+  fitSmallCaps();
+  show(0);
+}
+
+/* Shrink a headline only if a slide's content would rise too close to the top (protects against long copy from the sheet). */
+function fitAll(){
+  document.querySelectorAll('.panel').forEach(p=>{
+    const c = p.querySelector('.content'), h = p.querySelector('h1'); if(!h) return;
+    h.style.fontSize = ''; let f = parseFloat(getComputedStyle(h).fontSize), min = f*.6;
+    while(c.offsetTop < 160 && f > min){ f *= .94; h.style.fontSize = f+'px'; }
+  });
+}
+document.fonts && document.fonts.ready.then(()=>{ fitAll(); sizeClock(); projectPanel(); });
+new ResizeObserver(()=>projectPanel()).observe(document.querySelector('#sidebot'));
+
+
+
+function show(n){
+  clearTimeout(timer);
+  if(liveCur) return;
+  if(pendingContent && applyContent()) return;
+  idx = (n + seq.length) % seq.length;
+  const slides = document.querySelectorAll('.slide');
+  slides.forEach((el,i)=>{
+    if(i === idx){
+      el.classList.add('noanim'); el.classList.remove('on','out'); void el.offsetWidth;   // park at right
+      el.classList.remove('noanim'); el.classList.add('on');                               // slide in from the right
+    } else if(el.classList.contains('on')){
+      el.classList.remove('on'); el.classList.add('out');                                  // fade + slide out left
+      setTimeout(()=>{ if(!el.classList.contains('on')){ el.classList.add('noanim'); el.classList.remove('out'); void el.offsetWidth; el.classList.remove('noanim'); } }, 1700);
+    }
+    const v = el.querySelector('video');
+    if(v){ if(i===idx){ try{ v.currentTime = 0; v.play().catch(()=>{}); }catch(e){} } else setTimeout(()=>v.pause(), 1700); }
+  });
+  const d = seq[idx].p.duration || 10;
+  stage.style.setProperty('--d', d+'s');
+  if($('#timebar').children.length !== seq.length) $('#timebar').innerHTML = seq.map(({p,c})=>
+      `<div class="tseg"><span class="tl">${p.type==='event' ? strip(p.title) : c.thumb}</span><div class="trk"><i></i></div></div>`).join('');
+  [...$('#timebar').children].forEach((el,i)=>{ el.classList.remove('now','done'); void el.offsetWidth; if(i<idx) el.classList.add('done'); if(i===idx) el.classList.add('now'); });
+  timer = setTimeout(()=>show(idx+1), d*1000);
+}
+
+/* ---------- livestream ---------- */
+let liveHandoff = false, liveCur = null, liveDemo = /[?&]preview/.test(location.search) && /[?&]live=demo/.test(location.search);
+const YT_P = 'autoplay=1&controls=0&playsinline=1&rel=0&iv_load_policy=3&cc_load_policy=1&cc_lang_pref=en';
+const atLocal = t => parseWhen(t);
+const hmm = d => d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+
+// Chrome starts an AudioContext "running" only when this page may autoplay with sound (device setting, or after a click/keypress)
+function soundAllowed(){
+  try{ const ac = new (window.AudioContext || window.webkitAudioContext)(); const ok = ac.state === 'running'; ac.close(); return ok; }
+  catch(e){ return false; }
+}
+const wantsSound = l => SOUND_SCREENS.includes(channel) && String(l.sound || 'on').toLowerCase() !== 'off';
+
+function liveNow(){
+  if(liveDemo) return LIVE_DEMO;
+  const now = new Date();
+  return LIVE.concat(SOON_DEMO ? [SOON_DEMO] : []).find(l => l.url && (!l.screens || l.screens.includes(channel)) &&
+    (l.mode === 'on' || (l.mode !== 'off' && atLocal(l.start) <= now && now < atLocal(l.end)))) || null;
+}
+
+// What kind of player a link needs
+function liveSource(url, sound){
+  let u; try{ u = new URL(url, location.href); }catch(e){ return { kind:'card' }; }
+  if(!/^https?:$/.test(u.protocol)) return { kind:'card' };
+  const h = u.hostname.replace(/^(www|m)\./,'');
+  const yt = id => ({ kind:'frame', src:`https://www.youtube.com/embed/${id}?${YT_P}&mute=${sound?0:1}` });
+  const ytChannel = ch => ({ kind:'frame', src:`https://www.youtube.com/embed/live_stream?channel=${ch}&${YT_P}&mute=${sound?0:1}` });
+  if(/(^|\.)zoom(gov)?\.(us|com)$/.test(h)) return { kind:'card', zoom:true };
+  if(h === 'youtu.be') return yt(u.pathname.slice(1));
+  if(/(^|\.)youtube(-nocookie)?\.com$/.test(h)){
+    if(u.searchParams.get('v')) return yt(u.searchParams.get('v'));
+    if(u.pathname.startsWith('/embed/live_stream')) return ytChannel(u.searchParams.get('channel'));
+    let m = u.pathname.match(/^\/(?:live|embed|shorts)\/([\w-]{6,})/); if(m) return yt(m[1]);
+    m = u.pathname.match(/^\/channel\/(UC[\w-]+)/); if(m) return ytChannel(m[1]);
+    return { kind:'card' };            // e.g. youtube.com/@handle/live — no ID to embed, so scan-to-watch
+  }
+  if(/\.m3u8$/i.test(u.pathname)) return { kind:'hls', src:u.href };
+  if(/\.(mp4|webm|mov)$/i.test(u.pathname)) return { kind:'video', src:u.href };
+  return { kind:'frame', src:u.href }; // another player's embed link
+}
+
+function liveQR(l){
+  if(l.qrCode) return `<img src="${QR_DIR + String(l.qrCode).toUpperCase()}.svg" alt="" onerror="this.outerHTML=qrSVG(goLink('${l.qrCode}'),'#000')">`;
+  return qrSVG(l.url, '#000');
+}
+
+const STRETCH_S = 1.1;
+function revealAt(x, w0, w1, dur){
+  const f = (x - w0) / (w1 - w0); if(f <= 0) return 0; if(f >= 1) return dur;
+  const bz = (t, a, b) => 3*a*t*(1-t)*(1-t) + 3*b*t*t*(1-t) + t*t*t;      // cubic-bezier(.45,0,.25,1)
+  for(let t = 0; t <= 1; t += .005) if(bz(t, 0, 1) >= f) return bz(t, .45, .25) * dur;
+  return dur;
+}
+
+function startLive(l, key){
+  const want = wantsSound(l), sound = want && soundAllowed();
+  const src = liveSource(l.url, sound), end = atLocal(l.end);
+  clearTimeout(timer);
+  document.querySelectorAll('.slide video').forEach(v => v.pause());
+  let player;
+  if(src.kind === 'frame') player = `<iframe src="${src.src}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" title="${strip(l.title)}"></iframe>`;
+  else if(src.kind === 'card') player = `<div class="lcard"><div><div class="kicker">${src.zoom ? 'Live now on Zoom' : 'Live now'}</div>
+      <h2>${l.title}</h2><p>${src.zoom ? 'Scan to join from your phone' : 'Scan to watch from your phone'}</p></div><div class="qt">${liveQR(l)}</div></div>`;
+  else player = `<video autoplay muted playsinline></video>`;
+  // where the countdown bar is right now (if it's showing), so the live bar can lift off from that exact spot
+  const handoff = document.body.classList.contains('soon');
+  $('#live').innerHTML = `<div class="lframe">${player}</div>`;
+  const tab = $('#livetab');
+  tab.classList.remove('show','dropping');
+  tab.innerHTML = `<span class="st">${strip(l.title)}</span><span class="sl"><span class="lv">Live</span></span><span class="sc"><span class="cv">${cvHTML('now')}</span></span>`
+    + (l.place ? `<span class="sep" aria-hidden="true"></span><span class="locw"><span class="loc">${venue(l.place)}</span></span>` : '')
+    + (want && !sound && src.kind !== 'card' ? `<span class="lsound"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></svg>Press any key for sound</span>` : '');
+  if(handoff){
+    // 1) the bar starts exactly over the countdown (same width, in the ticker) and rises straight up by its own height
+    const w = $('#soon').offsetWidth;
+    liveHandoff = true; $('#soon').classList.add('vacant');
+    tab.classList.add('flying'); tab.style.width = w + 'px'; tab.style.transform = 'translateY(var(--ticker-h))'; tab.style.opacity = '1';
+    void tab.offsetWidth; tab.classList.remove('flying'); tab.style.transform = '';
+    // 2) once it settles: stretch it to the chapel sidebar while the ticker slides left into the space it left
+    setTimeout(() => {
+      // 3) as the bar's edge sweeps right, each piece (divider, location, sound hint) starts fading in the moment it is fully uncovered
+      const W = tab.parentElement ? 1920 - parseFloat(getComputedStyle(stage).getPropertyValue('--side-w')) : w;
+      [...tab.querySelectorAll('.sep,.loc,.lsound')].forEach(el => {
+        const r = (el.closest('.locw') || el), right = r.offsetLeft + r.offsetWidth;
+        el.style.transitionDelay = revealAt(right, w, W, STRETCH_S).toFixed(2) + 's';
+      });
+      tab.style.width = ''; tab.classList.add('show');
+      const so = $('#soon'); so.style.width = so.offsetWidth + 'px'; void so.offsetWidth; so.classList.add('collapse'); so.style.width = '0px';
+      setTimeout(() => { liveHandoff = false; so.classList.remove('collapse','vacant'); so.style.width = ''; tab.style.opacity = ''; tickSoon(); }, 1150);
+    }, 1150);
+  } else setTimeout(() => tab.classList.add('show'), 700);
+  document.body.classList.add('is-live');
+  liveCur = { key, l, want, sound };
+  fitSmallCaps();
+  const v = $('#live video'); if(!v) return;
+  const retry = () => setTimeout(() => { if(liveCur && liveCur.key === key){ liveCur = null; checkLive(); } }, 20000);
+  const captions = () => { const t = [...v.textTracks].find(t => /captions|subtitles/.test(t.kind)); if(t) t.mode = 'showing'; };
+  v.textTracks.addEventListener('addtrack', captions);
+  v.addEventListener('error', retry);
+  v.muted = !sound;
+  if(src.kind === 'video' || v.canPlayType('application/vnd.apple.mpegurl')){ v.src = src.src; v.loop = !!l.demo; v.play().catch(()=>{}); return; }
+  const go = () => { const hls = new Hls({ enableWebVTT:true, renderTextTracksNatively:true });
+    hls.on(Hls.Events.ERROR, (e, d) => { if(d.fatal){ hls.destroy(); retry(); } });
+    hls.loadSource(src.src); hls.attachMedia(v); v.play().catch(()=>{}); };
+  if(window.Hls) return go();
+  const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js';
+  sc.onload = go; sc.onerror = retry; document.head.appendChild(sc);
+}
+
+function stopLive(){
+  if(!liveCur) return;
+  liveCur = null;
+  // the bar eases down and drops behind the ticker while the stream fades and the slides return
+  const tab = $('#livetab'); tab.classList.add('dropping');
+  document.body.classList.remove('is-live');
+  setTimeout(() => { if(!liveCur){
+    $('#live').innerHTML = ''; tab.classList.add('flying'); tab.classList.remove('dropping','show'); tab.innerHTML = '';
+    void tab.offsetWidth; tab.classList.remove('flying'); } }, 1400);
+  show(idx + 1);
+}
+
+function checkLive(){
+  const l = liveNow(), key = l ? l.url + '|' + l.title + '|' + (l.end||'') : '';
+  if(liveCur && liveCur.key === key) return;
+  if(liveCur) stopLive();
+  if(l) startLive(l, key);
+}
+
+// a click or keypress unlocks sound for this session: restart the stream with audio
+function unlockSound(){
+  if(!liveCur || !liveCur.want || liveCur.sound || !soundAllowed()) return;
+  const l = liveCur.l, key = liveCur.key; startLive(l, key);
+}
+addEventListener('click', unlockSound); addEventListener('keydown', e => { if(!/^[lLcCgG]$/.test(e.key)) unlockSound(); });
+
+/* countdown: the next scheduled stream for this screen within COUNTDOWN_MIN minutes */
+function nextLive(){
+  const now = new Date(), horizon = +now + COUNTDOWN_MIN*60e3;
+  const rows = LIVE.concat(SOON_DEMO ? [SOON_DEMO] : []);
+  return rows.filter(l => l.url && String(l.mode||'auto').toLowerCase() === 'auto' && (!l.screens || l.screens.includes(channel)))
+    .map(l => ({ l, t: atLocal(l.start) })).filter(x => x.t && +x.t > +now - 3000 && +x.t <= horizon).sort((a,b) => a.t - b.t)[0] || null;
+}
+const cvHTML = v => v === 'now' ? '<b>now</b>' : `<span class="ci">in</span><span class="dg"><b>${v}</b></span>`;
+let soonVal = '';
+// swap old → new inside a clipping box: old slides out left, new slides in
+function roll(box, oldEl, html, cls, tag){
+  const nw = document.createElement(tag || 'span'); if(cls) nw.className = cls; nw.innerHTML = html; nw.classList.add('in');
+  oldEl.classList.add('out'); setTimeout(() => oldEl.remove(), 850);
+  box.appendChild(nw); setTimeout(() => nw.classList.remove('in'), 1300);
+}
+function setCounter(v){
+  const box = $('#soonc'), cur = box.querySelector('.cv:not(.out)');
+  if(v === soonVal && cur) return;
+  if(!cur || !soonVal){
+    box.style.minWidth = ''; box.innerHTML = `<span class="cv">${cvHTML(v)}</span>`; soonVal = v;
+    // reserve the starting width so the bar never resizes (and never clips) as digits drop away
+    const dg = box.querySelector('.dg'); if(dg) requestAnimationFrame(() => { dg.style.minWidth = dg.offsetWidth + 'px'; });
+    return;
+  }
+  if(v === 'now'){ box.style.minWidth = box.offsetWidth + 'px'; roll(box, cur, cvHTML(v), 'cv'); }                                       // "IN 0:01" → "NOW"
+  else if(v.length !== soonVal.length || /:59$/.test(v)){                                 // minute change: digits only
+    const dg = cur.querySelector('.dg'); roll(dg, dg.querySelector('b:not(.out)'), v, '', 'b'); }
+  else cur.querySelector('.dg b:not(.out)').textContent = v;
+  soonVal = v;
+}
+function tickSoon(){
+  if(liveHandoff) return;
+  const n = liveCur ? null : nextLive();
+  document.body.classList.toggle('soon', !!n);
+  if(!n){ soonVal = ''; $('#soonc').innerHTML = ''; $('#soonc').style.minWidth = ''; return; }
+  const left = Math.max(0, Math.ceil((n.t - new Date())/1000));
+  // under a minute the leading zero drops (1:00 → :59 … :01 → NOW)
+  setCounter(!left ? 'now' : (left >= 60 ? Math.floor(left/60) : '') + ':' + String(left%60).padStart(2,'0'));
+  const t = strip(n.l.title); if($('#soont').textContent !== t) $('#soont').textContent = t;
+  if(left <= 1) setTimeout(checkLive, 2400);   // let "NOW" fully land before the bar lifts
+}
+
+/* ticker */
+function buildTicker(){
+  const one = TICKER.map(t=>`<span class="${t.hot?'hot':''}">${t.hot?`<b>${t.hot.toUpperCase()}</b>`:''}${t.text}</span><span class="sep">◆</span>`).join('');
+  $('#track').innerHTML = one + one;
+  requestAnimationFrame(()=>{ $('#track').style.animationDuration = ($('#track').scrollWidth/2/70) + 's'; });
+}
+
+/* analog clock — matched to Wait Chapel's steeple clock (close-up photos), colors reversed for the dark sidebar:
+   • raised outer molding ring joined to the dial by four wide rectangular blocks at 12 / 3 / 6 / 9
+   • thick outer band with the minute dots set inside it
+   • tall, narrow, equal-width radial Roman numerals filling the band down to a thick inner ring
+   • spade-tipped hands: long slender minute hand, short stout hour hand
+   The gold second hand is an addition (the real clock has none). */
+const FACE = { ink:'#F2ECDF', hole:'#0b0b0b', second:'#C9A75A', four:'IIII' };
+function buildAnalog(){
+  const C = FACE.ink;
+  // blocks run from the dial edge (r≈95) out past the molding ring (r≈122), 18 units wide
+  const blocks = [0,90,180,270].map(a=>`<rect x="111" y="-2.5" width="18" height="28" rx="1" fill="url(#mold)" transform="rotate(${a} 120 120)"/>`).join('');
+  const dots = Array.from({length:60},(_,i)=>`<circle cx="120" cy="${120-90.5}" r="${i%5?1.45:1.9}" fill="${FACE.hole}" transform="rotate(${i*6} 120 120)"/>`).join('');
+  // numerals built from identical glyphs: every I, V and X has the same height, width and stroke weights
+  // (thick stem/diagonal 2.8, hairline 0.9, serifs 1.0), set radially between the outer band and inner ring
+  const T = 37.5, B = 63.5, S = 2.8, HL = .9, SF = 1;
+  const poly = p => `<path d="M${p.map(q=>q.join(' ')).join(' L')} Z"/>`;
+  const serif = (x0,x1,y) => `<rect x="${x0}" y="${y}" width="${x1-x0}" height="${SF}"/>`;
+  const G = {
+    I: { w:5.6, d:x => `<rect x="${x+2.8-S/2}" y="${T}" width="${S}" height="${B-T}"/>` + serif(x,x+5.6,T) + serif(x,x+5.6,B-SF) },
+    V: { w:8.8, d:x => poly([[x+.3,T],[x+.3+S,T],[x+4.4+.9,B],[x+4.4-.9,B]]) + poly([[x+8.8-1.2,T],[x+8.8-1.2+HL,T],[x+4.4+.5,B],[x+4.4-.2,B]])
+                     + serif(x-.5,x+S+1,T) + serif(x+8.8-2.1,x+9.3,T) },
+    X: { w:9.6, d:x => poly([[x+.3,T],[x+.3+S,T],[x+9.3,B],[x+9.3-S,B]]) + poly([[x+9.6-1.3,T],[x+9.6-1.3+HL,T],[x+1.4,B],[x+.5,B]])
+                     + serif(x-.4,x+S+1.1,T) + serif(x+9.6-2.2,x+10,T) + serif(x-.4,x+2.3,B-SF) + serif(x+9.6-S-1.1,x+10,B-SF) },
+  };
+  const numeral = str => { const gap = .9, w = [...str].reduce((a,c)=>a+G[c].w,0) + gap*(str.length-1);
+    let x = 120 - w/2, out = ''; for(const c of str){ out += G[c].d(x); x += G[c].w + gap; } return out; };
+  const nums = ['XII','I','II','III',FACE.four,'V','VI','VII','VIII','IX','X','XI'].map((n,i)=>
+    `<g fill="${C}" transform="rotate(${i*30} 120 120)">${numeral(n)}</g>`).join('');
+  // spade hands, drawn pointing to 12
+  const minute = `M120 26 C122.6 31 126.2 36.5 126 41.5 C125.8 45.5 123 47.6 121.3 49.5 L121.3 131 L118.7 131 L118.7 49.5 C117 47.6 114.2 45.5 114 41.5 C113.8 36.5 117.4 31 120 26 Z`;
+  const hour   = `M120 56 C123.8 61.5 128.6 67 128.2 73 C127.9 77.5 124.4 80 122.4 82.5 L122.4 128 L117.6 128 L117.6 82.5 C115.6 80 112.1 77.5 111.8 73 C111.4 67 116.2 61.5 120 56 Z`;
+  $('#analog').innerHTML = `<svg viewBox="-6 -6 252 252">
+    <defs>
+      <linearGradient id="mold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFDF7"/><stop offset=".5" stop-color="#E4DCC9"/><stop offset="1" stop-color="#8C8576"/></linearGradient>
+      <linearGradient id="bezel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".55" stop-color="#EDE7DA"/><stop offset="1" stop-color="#9A9385"/></linearGradient>
+      <radialGradient id="dial" cx=".42" cy=".38" r=".7"><stop offset="0" stop-color="rgba(255,255,255,.07)"/><stop offset="1" stop-color="rgba(0,0,0,.5)"/></radialGradient>
+    </defs>
+    <g opacity=".5">
+    <circle cx="120" cy="120" r="114" fill="none" stroke="url(#mold)" stroke-width="7"/>
+    <circle cx="120" cy="120" r="110.2" fill="none" stroke="rgba(0,0,0,.4)" stroke-width="1"/>
+    ${blocks}
+    <circle cx="120" cy="120" r="96" fill="url(#dial)"/>
+    <circle cx="120" cy="120" r="90.5" fill="none" stroke="url(#bezel)" stroke-width="11"/>
+    ${dots}
+    <circle cx="120" cy="120" r="84.6" fill="none" stroke="rgba(0,0,0,.5)" stroke-width="1.2"/>
+    ${nums}
+    <circle cx="120" cy="120" r="51" fill="none" stroke="url(#bezel)" stroke-width="4.5"/>
+    </g>
+    <g id="hh"><path d="${hour}" fill="#FFFFFF" stroke="#000" stroke-width=".8"/></g>
+    <g id="mh"><path d="${minute}" fill="#FFFFFF" stroke="#000" stroke-width=".8"/></g>
+    <g id="sh"><line x1="120" y1="144" x2="120" y2="34" stroke="${FACE.second}" stroke-width="2.2" stroke-linecap="round"/><circle cx="120" cy="137" r="4.5" fill="${FACE.second}"/></g>
+    <circle cx="120" cy="120" r="7" fill="${C}"/><circle cx="120" cy="120" r="4" fill="${FACE.second}"/><circle cx="120" cy="120" r="1.6" fill="#000"/>
+  </svg>`;
+  const hh = $('#hh'), mh = $('#mh'), sh = $('#sh');
+  (function frame(){
+    const n = new Date(), s = n.getSeconds() + n.getMilliseconds()/1000, m = n.getMinutes() + s/60, h = (n.getHours()%12) + m/60;
+    hh.setAttribute('transform', `rotate(${h*30} 120 120)`);
+    mh.setAttribute('transform', `rotate(${m*6} 120 120)`);
+    sh.setAttribute('transform', `rotate(${s*6} 120 120)`);
+    requestAnimationFrame(frame);
+  })();
+}
+buildAnalog();
+
+/* ─── Wait Chapel tower, modelled in 3D from the WFU footer vector + campus photos (drone, low-angle, dusk) ───
+   Sections on one vertical axis (vector units; vy grows downward). Each level is a footprint: square (F = W) or
+   octagon / chamfered square (front-face half-width F < W). Sloped roofs interpolate between levels.
+   octagonal belfry → sloped copper roof + pediment → chamfered clock stage → sloped copper skirt roof with corner
+   finials → cornice + frieze (entablature) → brick shaft. Turned TILT° so the left side recedes; true perspective. */
+const TOWER = { tilt:25, P:2600, S:2.0, clockVY:978, clockY:270, eyeY:990, shaftX:1536, clock:200, WS:112 };   // eyeY = horizon (viewer's eye level) on screen
+const LEVELS = [            // [vy, W, F]  — consecutive pairs form a section (vertical walls when W/F repeat)
+  [560,43,18],[580,57,24],[596,51,21],[640,52,22],[676,79,33],[712,89,37],[724,103,43],[738,96,40],   // lantern, bell roof
+  [738,98,41],[888,98,41],                                   // octagonal belfry
+  [888,98,41],[906,121,71],[920,121,71],                     // sloped copper roof → eave fascia
+  [920,112,66],[1046,112,66],                                // chamfered clock stage
+  [1046,112,66],[1056,146,146],                              // copper skirt roof (sloped, chamfer → square)
+  [1056,150,150],[1066,150,150],[1066,143,143],[1110,143,143], // cornice + frieze with brackets
+  [1110,140,140],[1700,140,140],                             // brick shaft
+];
+(function buildTower(){
+  const T = TOWER, a = T.tilt*Math.PI/180, ca = Math.cos(a), sa = Math.sin(a);
+  // u: left/right on the front, t: depth from the axis (negative = toward viewer). Origin of depth = clock-stage front face.
+  const rawEye = (u, t, vy, eyeY) => { const eyeVY = T.clockVY + (eyeY - T.clockY)/T.S;    // tower height at eye level
+    const x = u*ca + (t+T.WS)*sa, z = -u*sa + (t+T.WS)*ca, k = T.P/(T.P + T.S*z);
+    return [x*T.S*k, (eyeY - T.clockY) + (vy - eyeVY)*T.S*k]; };
+  const raw = (u, t, vy) => rawEye(u, t, vy, T.eyeY);
+  const CX = T.shaftX - raw(-140, -140, 1200)[0], CY = T.clockY;
+  const P = (u,t,vy) => { const p = raw(u,t,vy); return [CX+p[0], CY+p[1]]; };
+  const f = n => n.toFixed(1), pt = p => `${f(p[0])} ${f(p[1])}`;
+  const corners = (W,F) => [[-F,-W],[-W,-F],[-W,F],[-F,W]];     // left-half corners, front → back
+  const leftmost = (W,F,vy) => corners(W,F).map(([u,t]) => P(u,t,vy)).reduce((m,p)=> p[0]<m[0]?p:m);
+
+  // exact silhouette: each section is a convex block (frustum); its outline is the convex hull of its projected corners
+  const foot = (W,F) => F>=W ? [[-W,-W],[W,-W],[W,W],[-W,W]] : [[-F,-W],[F,-W],[W,-F],[W,F],[F,W],[-F,W],[-W,F],[-W,-F]];
+  const hull = pts => { pts = pts.slice().sort((p,q)=>p[0]-q[0]||p[1]-q[1]);
+    const cr=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]), lo=[], up=[];
+    for(const p of pts){ while(lo.length>1 && cr(lo[lo.length-2],lo[lo.length-1],p)<=0) lo.pop(); lo.push(p); }
+    for(const p of pts.slice().reverse()){ while(up.length>1 && cr(up[up.length-2],up[up.length-1],p)<=0) up.pop(); up.push(p); }
+    return lo.slice(0,-1).concat(up.slice(0,-1)); };
+  const hulls = [];
+  for(let i=0;i<LEVELS.length-1;i++){
+    const [y1,W1,F1] = LEVELS[i], [y2,W2,F2] = LEVELS[i+1]; if(y1===y2) continue;
+    const pts = foot(W1,F1).map(([u,t]) => P(u,t,y1)).concat(foot(W2,F2).map(([u,t]) => P(u,t,y2)));
+    hulls.push('M' + hull(pts).map(pt).join(' L') + ' Z');
+  }
+  const d = hulls.join(' ');
+
+  // visible faces of each section: front face and the left chamfer face (squares: front only)
+  const lines = [];
+  const seg = (p,q) => lines.push(`M${pt(p)} L${pt(q)}`);
+  // only the lines that describe the architecture: hips of the two copper roofs, the chamfer arris of the
+  // belfry and clock stage, and the key horizontal lines (eave, clock-stage base, cornice, frieze)
+  const hip = (y1,W1,F1,y2,W2,F2) => seg(P(-F1,-W1,y1), P(-F2,-W2,y2));
+  hip(888,98,41, 906,121,71);                 // upper roof hip (front-left)
+  hip(1046,112,66, 1056,146,146);             // skirt roof hip (front-left)
+  seg(P(-41,-98,760), P(-41,-98,888));        // belfry chamfer arris
+  seg(P(-66,-112,920), P(-66,-112,1046));     // clock-stage chamfer arris
+  const hz = (vy,W,F) => seg(P(-F,-W,vy), P(F,-W,vy));
+  hz(1046,112,66); hz(1066,150,150); hz(1110,143,143);
+  // belfry: arched louvered openings on the front and left-chamfer faces (only the lower part is on screen)
+  const face = (cu,ct,du,dt) => (s,vy) => P(cu+du*s, ct+dt*s, vy);       // param s in [-1,1] across a face
+  const bf = face(0,-98, 41,0), bl = face(-69.5,-69.5, 28.5,-28.5);
+  // belfry openings (front + left chamfer face): jambs and the louver slats inside them
+  for(const [F,step] of [[bf,5.5]]){                              // front opening only; the steep chamfer face read as hatching                     // angled face recedes steeply: fewer slats read cleaner
+    for(const s of [-.62,.62]) seg(F(s,740), F(s,884));
+    for(let vy=744; vy<=880; vy+=step) seg(F(-.62,vy), F(.62,vy));
+  }
+  // ── detail, copied from the photos ──
+  const front = (W) => (u,vy) => P(u,-W,vy);
+  const cham = (W,F) => (s2,vy) => P(-(W+F)/2 + s2*(W-F)/2, -(W+F)/2 - s2*(W-F)/2, vy);
+  const poly = pts => lines.push('M' + pts.map(pt).join(' L'));
+  // belfry: round-arched openings with a surround (front + left chamfer), spring line, sill band, right arris
+  for(const [F,half] of [[bf,41]]){
+    for(const [rs,off] of [[.62,0],[.74,1]]){                 // opening, then surround moulding
+      const r = rs*half, spring = 790 - off*2;
+      poly([F(-rs,884), F(-rs,spring), ...Array.from({length:13},(_,i)=>{ const th=Math.PI*(1-i/12); return F(rs*Math.cos(th), spring - r*Math.sin(th)); }), F(rs,spring), F(rs,884)]);
+    }
+    seg(F(-1,884), F(1,884));                                  // sill band
+  }
+  seg(P(41,-98,740), P(41,-98,888));                          // belfry right arris
+  // upper copper roof: eave + fascia band on the front and left-chamfer faces
+  for(const vy of [906, 920]) seg(P(-71,-121,vy), P(71,-121,vy));
+  seg(P(-121,-71,920), P(-71,-121,920));
+  // clock stage: pilasters both sides, chamfer pilaster, base band, clock surround moulding
+  for(const u of [57,66]) seg(P(u,-112,926), P(u,-112,1046));
+  seg(cham(112,66)(-.7,924), cham(112,66)(-.7,1046));
+  seg(P(-66,-112,1040), P(66,-112,1040)); seg(cham(112,66)(-1,1040), cham(112,66)(1,1040));
+  // skirt roof: standing seams from the clock-stage base out to the eave
+  for(let k=-6;k<=6;k++){ const r=k/7; seg(P(66*r,-112,1046), P(146*r,-146,1056)); }
+  // cornice crown mouldings + frieze: scroll-console brackets at the pilasters
+  for(const vy of [1058.5,1061.5]) seg(P(-150,-150,vy), P(150,-150,vy));
+  hz(1104,143,143);
+  // frieze: a scroll console above each pilaster (corner + inner pair), sitting on the architrave
+  const PIL = [-133, -50, 50, 133];
+  for(const u of PIL){
+    const k = 6;                                     // half-width of the console face
+    poly([P(u-k,-145,1066), P(u-k,-145,1090), ...Array.from({length:9},(_,i)=>{ const th=Math.PI*(1+i/8); return P(u + k*Math.cos(th)*0, -145, 0); }).slice(0,0),
+          P(u-k,-145,1094), P(u-k*.35,-145,1100), P(u+k*.35,-145,1100), P(u+k,-145,1094), P(u+k,-145,1066)]);
+    poly(Array.from({length:17},(_,i)=>{ const th=2*Math.PI*i/16; return P(u + 3*Math.cos(th), -145, 1092 + 3*Math.sin(th)); }));   // scroll eye
+    seg(P(u-k,-145,1072), P(u+k,-145,1072));                                                                                  // console cap
+  }
+
+  // brick shaft: projecting corner pilaster with its capital, down to the ticker
+  seg(P(-127,-140,1110), P(-127,-140,1700)); seg(P(-140,-140,1114), P(-127,-140,1114)); seg(P(-140,-140,1118), P(-127,-140,1118));
+
+  // pediment: a gable on the front plane of the eave, sitting on the fascia, with its inner (tympanum) moulding
+  lines.push(`M${pt(P(-64,-121,906))} L${pt(P(0,-121,890))} L${pt(P(64,-121,906))}`);
+  // clock-stage corner pilasters + clock surround ring
+  seg(P(-57,-112,926), P(-57,-112,1046));                         // clock-stage pilaster
+  // copper roofs: standing-seam hints
+
+  // entablature: brackets (scroll consoles) under the cornice, at the pilasters
+
+  // brick shaft: string courses and corner pilaster
+
+
+  // corner finial (front-left), on the skirt roof near its corner — profile measured from the drone photo
+  // finial profile, matched to the close-up: pyramid cap → shaft widening downward → rounded underside → narrow neck →
+  // concave flare → overhanging footing slab → copper plinth.   [vy, half-width]
+  // (widths were measured on an angled photo, so the square cross-section is ¾ of the apparent width)
+  const FIN = [[986,0],[991.7,10.3],[1017.6,13.7],[1018.7,13.4],[1019.6,12.6],[1020.6,11],[1021.6,9.4],[1022.6,9.3],
+               [1024,9.8],[1025.4,10.8],[1026.8,12.3],[1028.2,14.2],[1029.2,16.4],[1033.6,16.4],[1033.6,13.4],[1054,13.4]]
+               .map(([vy,h]) => [vy, h*.75]);
+  const fu = -128, ft = -128;
+  // exact solid: convex hull of each profile segment's 8 corners (same method as the tower)
+  const sq = h => [[-h,-h],[h,-h],[h,h],[-h,h]];
+  const finHulls = [];
+  for(let i=0;i<FIN.length-1;i++){
+    const [y1,h1] = FIN[i], [y2,h2] = FIN[i+1]; if(y1===y2) continue;
+    const pts = sq(h1).map(([a2,b2])=>P(fu+a2,ft+b2,y1)).concat(sq(h2).map(([a2,b2])=>P(fu+a2,ft+b2,y2)));
+    finHulls.push('M' + hull(pts).map(pt).join(' L') + ' Z');
+  }
+  const finial = finHulls.join(' ');
+  // occluders in FRONT of the finial (we look up at it): the strip of skirt roof between the finial and the eave,
+  // and the cornice below it. Drawn after the finial so they hide the base of the plinth, as on the building.
+  // Only the NEAR side is used (front faces), so no back edges can show through.
+  const occ = 'M' + hull([[-139.5,1053.4],[139.5,1053.4],[-146,1056],[146,1056],[-150,1056],[150,1056],[-150,1066],[150,1066]]
+                .map(([u,vy]) => P(u, vy<1055 ? -139.5 : (vy===1056 && Math.abs(u)===146 ? -146 : -150), vy))).map(pt).join(' L') + ' Z';
+  const occLines = [[1056,150],[1058.5,150],[1061.5,150],[1066,150]].map(([vy,W]) => `M${pt(P(-W,-W,vy))} L${pt(P(W,-W,vy))}`).join(' ')
+                 + ` M${pt(P(-150,-150,1056))} L${pt(P(-150,-150,1066))}`;
+  // visible edges: front + right faces at each profile break, and the near (front-right) arris
+  const fe = (h,vy) => `M${pt(P(fu-h,ft-h,vy))} L${pt(P(fu+h,ft-h,vy))} L${pt(P(fu+h,ft+h,vy))}`;
+  const breaks = [[991.7,10.3],[1017.6,13.7],[1029.2,16.4],[1033.6,16.4],[1033.6,13.4]].map(([vy,h])=>[vy,h*.75]);
+  const finBands = breaks.map(([vy,h]) => fe(h,vy)).join(' ') + ' ' +
+    'M' + FIN.slice(0,14).map(([vy,h]) => pt(P(fu+h, ft-h, vy))).join(' L') + ' ' +
+    `M${pt(P(fu+10.05,ft-10.05,1033.6))} L${pt(P(fu+10.05,ft-10.05,1054))}`;
+
+  document.querySelector('#tower').innerHTML = `
+    <defs>
+      <linearGradient id="glim" gradientUnits="userSpaceOnUse" x1="1480" y1="-80" x2="1800" y2="1016">
+        <stop offset="0" stop-color="#CEB888" stop-opacity=".35"/>
+        <stop offset=".28" stop-color="#FFF4D8" stop-opacity="1"/>
+        <stop offset=".42" stop-color="#E6CF97" stop-opacity=".75"/>
+        <stop offset=".75" stop-color="#CEB888" stop-opacity=".4"/>
+        <stop offset="1" stop-color="#CEB888" stop-opacity=".3"/>
+      </linearGradient>
+      <linearGradient id="fadeY" gradientUnits="userSpaceOnUse" x1="0" y1="548" x2="0" y2="572">
+        <stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/>
+      </linearGradient>
+      <radialGradient id="fadeClk" gradientUnits="userSpaceOnUse" cx="${CX}" cy="${CY}" r="${T.clock*.5}">
+        <stop offset=".9" stop-color="#000" stop-opacity="1"/><stop offset="1" stop-color="#000" stop-opacity="0"/>
+      </radialGradient>
+      <mask id="omask" maskUnits="userSpaceOnUse" x="1300" y="-600" width="800" height="1700">
+        <rect x="1300" y="-600" width="800" height="1700" fill="#fff"/>
+        <ellipse cx="${CX}" cy="${CY}" rx="${T.clock*.5}" ry="${T.clock*.5}" fill="url(#fadeClk)"/>
+      </mask>
+      <mask id="tmask" maskUnits="userSpaceOnUse" x="1300" y="-600" width="800" height="1700">
+        <rect x="1300" y="-600" width="262" height="1700" fill="#fff"/>
+        <rect x="1562" y="-600" width="538" height="1700" fill="url(#fadeY)"/>
+        <ellipse cx="${CX}" cy="${CY}" rx="${T.clock*.5}" ry="${T.clock*.5}" fill="url(#fadeClk)"/>
+      </mask>
+    </defs>
+    <!-- outline: stroke every block, then fill them all on top so only the outer half of the stroke (the true silhouette) shows -->
+    <g mask="url(#omask)"><path d="${d}" fill="none" stroke="url(#glim)" stroke-width="3.6" stroke-linejoin="round"/></g>
+    <path d="${d}" fill="#050505"/>
+    <g mask="url(#tmask)" fill="none" stroke="url(#glim)" stroke-linejoin="round">
+      <path d="${lines.join(' ')}" stroke-width="1" opacity=".7"/>
+    </g>
+    <g mask="url(#omask)"><path d="${finial}" fill="none" stroke="url(#glim)" stroke-width="3" stroke-linejoin="round"/></g>
+    <path d="${finial}" fill="#050505"/>
+    <g mask="url(#tmask)" fill="none" stroke="url(#glim)" stroke-linejoin="round">
+      <path d="${finBands}" stroke-width="1" opacity=".7"/>
+    </g>
+    <path d="${occ}" fill="#050505"/>
+    <g mask="url(#tmask)" fill="none" stroke="url(#glim)">
+      <path d="${occLines}" stroke-width="1" opacity=".7"/>
+    </g>`;
+  window.TOWER_PROJ = { P: (u,t,vy) => P(u,t,vy), Peye: (u,t,vy,e) => { const p = rawEye(u,t,vy,e); return [CX+p[0], CY+p[1]]; }, CX, CY };
+  const c = document.querySelector('#analog');
+  const r = T.clock/2/T.S;
+  c.style.cssText = `left:0;top:0;width:${T.clock}px;height:${T.clock}px;transform-origin:0 0`;
+  c.style.transform = quadMatrix(T.clock, T.clock, [P(-r,-112,T.clockVY-r), P(r,-112,T.clockVY-r), P(r,-112,T.clockVY+r), P(-r,-112,T.clockVY+r)].map(([x,y])=>[x-1536,y]));
+})();
+
+/* rectangle (w×h, origin top-left) → screen quad [TL,TR,BR,BL] as a CSS matrix3d (unit-square homography, Heckbert) */
+function quadMatrix(w, h, q){
+  const [[x0,y0],[x1,y1],[x2,y2],[x3,y3]] = q;
+  const dx1=x1-x2, dx2=x3-x2, dx3=x0-x1+x2-x3, dy1=y1-y2, dy2=y3-y2, dy3=y0-y1+y2-y3, den = dx1*dy2-dx2*dy1;
+  const g=(dx3*dy2-dx2*dy3)/den, hh=(dx1*dy3-dx3*dy1)/den;
+  const A=x1-x0+g*x1, B=x3-x0+hh*x3, C=x0, D=y1-y0+g*y1, E=y3-y0+hh*y3, F=y0;
+  return `matrix3d(${A/w},${D/w},0,${g/w}, ${B/h},${E/h},0,${hh/h}, 0,0,1,0, ${C},${F},0,1)`;
+}
+
+/* Project the time/date + weather panel onto the brick shaft's front face (t = -140), in the tower's exact perspective.
+   The panel keeps its proportions (no stretching); it is sized to the largest rectangle on the face that fits between
+   the cornice and the ticker, so it reads as if projected onto the stone. */
+function projectPanel(){
+  const el = document.querySelector('#sidebot'); if(!window.TOWER_PROJ || !el) return;
+  const { P } = window.TOWER_PROJ, w = el.offsetWidth, h = el.offsetHeight;
+  const face = (u, vy) => P(u, -140, vy);
+  const solve = (fn, target, lo, hi) => { for(let i=0;i<60;i++){ const m=(lo+hi)/2; if(fn(m)<target) lo=m; else hi=m; } return (lo+hi)/2; };
+  // panel is viewed with its own eye level at its baseline, so the baseline projects perfectly flat (parallel to the
+  // screen framework) while the far/left side still recedes slightly. Sized to the largest panel under the cornice.
+  const LEFT = 1594, RIGHT = 1898, TOP = 462, BASE = 990;   // LEFT leaves ~30px between the pilaster line and the data   // TOP = underside of the cornice on the near (right) side
+  const face2 = (u, vy) => window.TOWER_PROJ.Peye(u, -140, vy, BASE);
+  const u0 = solve(u => face2(u,1100)[0], LEFT, -140, 140);
+  const v1 = solve(v => face2(u0,v)[1], BASE, 900, 1700);
+  const v0 = 1110 + 15;                                   // architrave + one spacing unit (--sg)
+  let Wu = (v1 - v0) * w / h;                             // keep the panel's proportions
+  while(face2(u0+Wu, v1)[0] > RIGHT) Wu -= 1;
+  const u1 = u0+Wu;
+  el.style.transform = quadMatrix(w, h, [face2(u0,v0), face2(u1,v0), face2(u1,v1), face2(u0,v1)].map(([x,y]) => [x-1536-34, y]));
+}
+
+/* fit the digital time to the sidebar and size the calendar box to the digits' measured height */
+function sizeClock(){
+  const el = $('#clock'), row = $('#clockrow'), avail = $('#sidebot').clientWidth;
+  let f = 110;
+  for(;;){
+    el.style.fontSize = f+'px';
+    const c = document.createElement('canvas').getContext('2d'); c.font = `600 ${f}px Cormorant, Georgia, serif`;
+    const m = c.measureText('0123456789');
+    const ink = m.actualBoundingBoxAscent, fa = m.fontBoundingBoxAscent, fd = m.fontBoundingBoxDescent;
+    const baseline = (f - (fa + fd))/2 + fa;              // baseline position inside a line-height:1 box
+    row.style.setProperty('--ch', Math.round(ink)+'px');   // calendar box height = digit height
+    el.style.setProperty('--chy', -(baseline - ink)+'px'); // pull digits up so their tops meet the box top
+    if(row.scrollWidth <= avail || f <= 60) break; f -= 2;
+  }
+}
+
+/* clock */
+function tick(){
+  const n = new Date(), [hm, ap] = n.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}).split(' ');
+  $('#clock').innerHTML = `<span class="hm"><span>${hm}</span></span><span class="ap">${ap}</span>`;
+  sizeClock();
+  $('#calm').textContent = MON[n.getMonth()]; $('#cald').textContent = n.getDate(); $('#calw').textContent = DOW[n.getDay()].toUpperCase();
+}
+
+/* weather — live from Open-Meteo (free, no key) once hosted. The preview can't reach it, so it shows labeled sample data. */
+const ICON = {
+  sun:   `<svg viewBox="0 0 64 64" fill="none" stroke-linecap="round"><circle cx="32" cy="32" r="12" fill="#CEB888"/><g stroke="#CEB888" stroke-width="4">${[0,45,90,135,180,225,270,315].map(a=>`<line x1="32" y1="8" x2="32" y2="14" transform="rotate(${a} 32 32)"/>`).join('')}</g></svg>`,
+  cloudPath: 'M18 48h28a11 11 0 0 0 1-22 15 15 0 0 0-29-3A12.5 12.5 0 0 0 18 48z',
+};
+function wxIcon(code){
+  const cloud = (y=0, fill='#F5F1E8') => `<path d="${ICON.cloudPath}" transform="translate(0 ${y})" fill="${fill}"/>`;
+  const svg = inner => `<svg viewBox="0 0 64 64" fill="none" stroke-linecap="round">${inner}</svg>`;
+  if(code<=1) return ICON.sun;
+  if(code===2) return svg(`<circle cx="24" cy="22" r="10" fill="#CEB888"/>${cloud(4)}`);
+  if(code===3) return svg(cloud(-2,'#c9c5bd'));
+  if(code===45||code===48) return svg(`<g stroke="#c9c5bd" stroke-width="4"><line x1="12" y1="24" x2="52" y2="24"/><line x1="8" y1="34" x2="48" y2="34"/><line x1="16" y1="44" x2="56" y2="44"/></g>`);
+  if(code>=71&&code<=77 || code===85||code===86) return svg(`${cloud(-8,'#c9c5bd')}<g fill="#fff"><circle cx="22" cy="52" r="3"/><circle cx="32" cy="57" r="3"/><circle cx="42" cy="52" r="3"/></g>`);
+  if(code>=95) return svg(`${cloud(-8,'#c9c5bd')}<path d="M34 42l-8 12h7l-3 9 10-14h-7l3-7z" fill="#FDC314"/>`);
+  return svg(`${cloud(-8,'#c9c5bd')}<g stroke="#9DC0EA" stroke-width="4"><line x1="22" y1="46" x2="19" y2="56"/><line x1="32" y1="46" x2="29" y2="56"/><line x1="42" y1="46" x2="39" y2="56"/></g>`);
+}
+const WXNAME = c => c<=0?'Clear':c===1?'Mostly clear':c===2?'Partly cloudy':c===3?'Cloudy':(c===45||c===48)?'Fog':(c>=51&&c<=57)?'Drizzle':(c>=61&&c<=67)?'Rain':(c>=71&&c<=77)?'Snow':(c>=80&&c<=82)?'Showers':(c===85||c===86)?'Snow showers':'Thunderstorms';
+
+const fmtS = h => h===0?'12a':h<12?h+'a':h===12?'12p':(h-12)+'p';
+const DROP = `<svg viewBox="0 0 24 24" width="13" height="13" style="width:13px;height:13px;margin:0 2px 0 0;vertical-align:-1px"><path d="M12 3c4 5 6 8.5 6 11a6 6 0 0 1-12 0c0-2.5 2-6 6-11z" fill="#9DC0EA"/></svg>`;
+
+const AXIS = `<div class="axis num dim"><span>6a</span><span>12p</span><span>6p</span><span>11p</span></div>`;
+const peakOf = hrs => hrs.reduce((a,b)=> b.p>a.p ? b : a, hrs[0]);
+
+/* today's graph: temperature line (dot = now) above hourly rain bars, short NOW marker; rain chance to its left */
+function graph(day, now){
+  const hrs = day.hourly, n = hrs.length, pk = peakOf(hrs);
+  const ts = hrs.map(x=>x.t), tmin = Math.min(...ts), tmax = Math.max(...ts);
+  const bars = hrs.map(x=>`<i class="${x===pk&&pk.p>0?'pk':''} ${now && x.h<now.hour?'past':''}" style="height:${Math.max(4, x.p)}%"></i>`).join('');
+  const X = i => (i + .5) / n * 300, Y = t => 29 - (t - tmin) / Math.max(1, tmax - tmin) * 25;
+  const pts = hrs.map((x,i)=>`${X(i).toFixed(1)},${Y(x.t).toFixed(1)}`).join(' ');
+  let marker = '', dot = '';
+  if(now && now.hour>=6 && now.hour<=23){
+    const nowPct = (now.hour + now.min/60 - 6)/18*100;
+    marker = `<span class="nowm" style="left:calc(${nowPct}% - 1px)"></span>`;
+    const fi = Math.min(n-1, Math.max(0, now.hour - 6 + now.min/60 - .5)), i0 = Math.floor(fi), f = fi - i0;
+    const tNow = hrs[i0].t + ((hrs[Math.min(n-1,i0+1)].t - hrs[i0].t) * f);
+    dot = `<span class="ndot" style="left:${nowPct}%;top:${(Y(tNow)/30*26).toFixed(1)}px"></span>`;
+  }
+  const line = `<svg class="tline" viewBox="0 0 300 30" preserveAspectRatio="none" style="margin-bottom:-18px">
+      <polyline points="${pts}" fill="none" stroke="rgba(245,241,232,.75)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>${dot}`;
+  const rain = `<div class="rain"><span class="rl">${DROP}RAIN</span><span class="num">${pk.p}<span class="pct">%</span></span></div>`;
+  return `<div class="graph"><div class="gcol">${line}<div class="pzone"><div class="bars">${bars}</div>${marker}</div>${AXIS}</div>${rain}</div>`;
+}
+
+function renderWx(w, sample){
+  const n = new Date(), t = w.today, m = w.tom, mp = peakOf(m.hourly);
+  $('#wday0').innerHTML = `<div class="lab">Now</div>
+    <div class="hdr">${wxIcon(w.now.code)}<span class="num temp">${Math.round(w.now.temp)}°</span>
+      <div class="hl"><span class="num">${Math.round(t.hi)}°</span><span class="sl">/</span><span class="num dim">${Math.round(t.lo)}°</span></div></div>
+    ${graph(t, {hour:n.getHours(), min:n.getMinutes()})}`;
+  $('#wday1').innerHTML = `<div class="lab">Tomorrow</div>
+    <div class="hdr">${wxIcon(m.code)}<span class="num pair">${Math.round(m.hi)}° <span class="dim">/ ${Math.round(m.lo)}°</span></span>
+      <span class="rain">${DROP.replace(/13/g,'20')}<span class="num">${mp.p}<span class="pct">%</span></span></span></div>`;
+}
+
+const hrsOf = (arr, temps) => arr.map((p,i)=>({h:6+i, p, t:temps[i]}));
+const SAMPLE_WX = { now:{temp:58, code:2},
+  today:{ code:2, hi:64, lo:41, hourly:hrsOf([0,0,0,0,5,5,10,10,15,20,25,30,30,25,20,15,10,10],[42,43,46,50,54,57,60,62,63,64,63,61,58,55,52,50,48,46]) },
+  tom:  { code:61, hi:61, lo:45, hourly:hrsOf([5,5,10,15,25,40,55,60,60,50,35,25,20,15,10,10,5,5],[45,46,48,51,54,56,58,59,61,60,58,55,53,51,49,48,47,46]) } };
+
+const PREVIEW_WX = /[?&]preview/.test(location.search);
+async function weather(){
+  try{
+    const u = `https://api.open-meteo.com/v1/forecast?latitude=${WX.lat}&longitude=${WX.lon}`
+      + `&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min`
+      + `&hourly=precipitation_probability,temperature_2m&temperature_unit=fahrenheit&timezone=America%2FNew_York&forecast_days=2`;
+    const j = await (await fetch(u)).json(), d = j.daily;
+    const hourly = date => j.hourly.time.map((ts,i)=>({ts, h:+ts.slice(11,13), p:j.hourly.precipitation_probability[i], t:j.hourly.temperature_2m[i]}))
+      .filter(x => x.ts.startsWith(date) && x.h >= 6);
+    const day = k => ({ code:d.weather_code[k], hi:d.temperature_2m_max[k], lo:d.temperature_2m_min[k], hourly:hourly(d.time[k]) });
+    const wx = { now:{temp:j.current.temperature_2m, code:j.current.weather_code}, today:day(0), tom:day(1) };
+    renderWx(wx, false);
+    try{ localStorage.setItem('wakediv-wx', JSON.stringify({ at:Date.now(), wx })); }catch(_){}
+  }catch(e){
+    let last = null; try{ last = JSON.parse(localStorage.getItem('wakediv-wx') || 'null'); }catch(_){}
+    if(last && Date.now() - last.at < 12*36e5) renderWx(last.wx, false);
+    else if(PREVIEW_WX) renderWx(SAMPLE_WX, true);
+  }
+}
+
+/* preview controls (only with ?preview in the address): ← → step, 1/2/3 switch screens, L / C / G livestream states */
+const PREVIEW = /[?&]preview/.test(location.search);
+addEventListener('keydown', e=>{
+  if(!PREVIEW) return;
+  if(e.key==='ArrowRight') show(idx+1);
+  if(e.key==='ArrowLeft') show(idx-1);
+  const k = {'1':'rotunda','2':'admissions','3':'auditorium'}[e.key]; if(k) location.hash = k;
+  if(!PREVIEW) return;
+  if(e.key==='l' || e.key==='L') preview(liveCur ? 'slides' : 'live');
+  if(e.key==='c' || e.key==='C') preview(SOON_DEMO && !liveCur ? 'slides' : 'countdown');
+  if(e.key==='g' || e.key==='G') preview('golive');
+});
+addEventListener('hashchange', () => { liveCur = null; document.body.classList.remove('is-live'); $('#live').innerHTML = ''; build(); checkLive(); });
+
+/* ---------- content from the Google Sheet ----------
+   The Sheet (shared "anyone with the link can view") is read as CSV, one tab at a time.
+   Every cell is treated as plain text: *word* becomes gold italics, a line break inside a cell becomes a line break.
+   The last good copy is saved on this screen, so a network or Google outage keeps showing the most recent content. */
+const ALL_SCREENS = ['rotunda','admissions','auditorium'];
+const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const md = v => esc(v).trim().replace(/\*([^*\n]+)\*/g, '<em>$1</em>').replace(/\r?\n/g, '<br>');
+const yes = v => !/^(no|n|false|0|off|hide)$/i.test(String(v || '').trim());
+function screensOf(v){
+  const t = String(v || '').toLowerCase();
+  if(!t.trim() || /\ball\b/.test(t)) return ALL_SCREENS.slice();
+  if(/\bnone\b/.test(t)) return [];
+  return ALL_SCREENS.filter(k => t.includes(k));
+}
+function mediaOf(v){
+  const t = String(v || '').trim(); if(!t) return {};
+  let src;
+  if(/^https:\/\//i.test(t)) src = t;
+  else if(/^[\w.\- ]+$/.test(t)) src = 'media/' + t;
+  else return {};
+  return /\.(jpe?g|png|webp|gif|avif)(\?|$)/i.test(src) ? { image:src } : { video:src };
+}
+function parseCSV(text){
+  const rows = []; let row = [], cell = '', q = false;
+  for(let i = 0; i < text.length; i++){
+    const ch = text[i];
+    if(q){ if(ch === '"'){ if(text[i+1] === '"'){ cell += '"'; i++; } else q = false; } else cell += ch; }
+    else if(ch === '"') q = true;
+    else if(ch === ','){ row.push(cell); cell = ''; }
+    else if(ch === '\n'){ row.push(cell); rows.push(row); row = []; cell = ''; }
+    else if(ch !== '\r') cell += ch;
+  }
+  if(cell !== '' || row.length){ row.push(cell); rows.push(row); }
+  const head = (rows.shift() || []).map(h => h.trim().toLowerCase());
+  return rows.filter(r => r.some(c => String(c).trim())).map(r => Object.fromEntries(head.map((h, i) => [h, (r[i] || '').trim()])));
+}
+async function readTab(id, tab){
+  const u = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/gviz/tq?tqx=out:csv&headers=1&sheet=${encodeURIComponent(tab)}&t=${Date.now()}`;
+  const r = await fetch(u, { cache:'no-store' });
+  if(!r.ok) throw new Error(tab + ' ' + r.status);
+  const t = await r.text();
+  if(/^\s*</.test(t)) throw new Error(tab + ' not shared');   // got a sign-in page, not CSV
+  return parseCSV(t);
+}
+
+function fromSheet(tabs){
+  const set = Object.fromEntries((tabs.Settings || []).map(r => [String(r.setting || '').toLowerCase(), r.value]));
+  const secs = Math.max(4, +set['slide seconds'] || 10);
+  const content = (tabs.Slides || []).filter(r => yes(r.show) && (r.headline || r.kicker)).map(r => {
+    const type = String(r.type || 'promo').toLowerCase();
+    const o = { type: ['promo','countdown','quote','spotlight'].includes(type) ? type : 'promo',
+      screens: screensOf(r.screens), theme: ['gold','night','ember','forest','stone'].includes(String(r.theme).toLowerCase()) ? String(r.theme).toLowerCase() : 'stone', duration: +r.seconds || secs,
+      kicker: md(r.kicker), title: md(r.headline), body: md(r.body), cta: esc(r.cta || ''), ctaSub: esc(r['cta subhead'] || ''),
+      qrCode: String(r['qr code'] || '').trim().toUpperCase().replace(/[^0-9A-Z]/g, ''),
+      thumb: esc(r['bar label'] || String(r.headline || '').replace(/[*\n]/g, ' ').trim()), ...mediaOf(r.background) };
+    if(o.type === 'countdown'){ o.deadline = r.deadline; o.label = o.title; o.sub = o.body; }
+    if(!o.cta) o.qrCode = '';
+    return o;
+  });
+  const events = (tabs.Events || []).filter(r => yes(r.show) && r.title && parseWhen(r.date)).map(r => ({
+    status: /recap/i.test(r.status) ? 'recap' : 'upcoming', date: r.date, screens: screensOf(r.screens),
+    title: md(r.title), time: esc(r.time), place: esc(r.location), cta: esc(r.cta || ''), ctaSub: esc(r['cta subhead'] || ''),
+    qrCode: r.cta ? String(r['qr code'] || '').trim().toUpperCase().replace(/[^0-9A-Z]/g, '') : '', ...mediaOf(r.background) }))
+    .sort((a, b) => parseWhen(a.date) - parseWhen(b.date));
+  if(events.length) content.push({ type:'events', screens: ALL_SCREENS.slice(), theme:'night', per: secs,
+    kicker: esc(set['events kicker'] || 'Happening at Wake Div'), thumb: esc(set['events bar label'] || 'Upcoming Events'), events });
+  const ticker = (tabs.Ticker || []).filter(r => yes(r.show) && r.text).map(r => ({ hot: esc(r.label || ''), text: esc(r.text) }));
+  const live = (tabs.Live || []).filter(r => r.title && r['stream url']).map(r => ({
+    mode: String(r.mode || 'auto').toLowerCase(), title: esc(r.title), url: r['stream url'], start: r.start, end: r.end,
+    screens: screensOf(r.screens), place: esc(r.location), sound: yes(r.sound) ? 'on' : 'off',
+    qrCode: String(r['qr code'] || '').trim().toUpperCase().replace(/[^0-9A-Z]/g, '') }));
+  return { content, ticker, live, settings: {
+    countdownMin: +set['countdown minutes'] || 60,
+    soundScreens: set['sound screens'] == null ? ALL_SCREENS.slice() : screensOf(set['sound screens']),
+    lat: +set['weather latitude'] || 36.0999, lon: +set['weather longitude'] || -80.2442 } };
+}
+
+let pendingContent = null, contentSig = '';
+function useContent(d){
+  if(!d || !d.content || !d.content.length) return false;
+  CONTENT = d.content; TICKER = d.ticker.length ? d.ticker : TICKER; LIVE = d.live;
+  COUNTDOWN_MIN = d.settings.countdownMin; SOUND_SCREENS = d.settings.soundScreens;
+  WX = { lat: d.settings.lat, lon: d.settings.lon };
+  return true;
+}
+// swap new content in between slides (never mid-livestream), then restart the rotation
+function applyContent(){
+  const d = pendingContent; pendingContent = null;
+  if(!useContent(d)) return false;
+  buildTicker(); build(); checkLive();
+  return true;
+}
+async function loadContent(){
+  const id = (window.SIGNAGE_CONFIG || {}).sheetId;
+  if(!id) return;
+  try{
+    const names = ['Slides','Events','Ticker','Live','Settings'], tabs = {};
+    await Promise.all(names.map(async n => { try{ tabs[n] = await readTab(id, n); }catch(e){ if(n === 'Slides') throw e; } }));
+    const d = fromSheet(tabs), sig = JSON.stringify(d);
+    if(!d.content.length || sig === contentSig) return;
+    const first = !contentSig; contentSig = sig;
+    try{ localStorage.setItem('wakediv-content', sig); }catch(_){}
+    pendingContent = d;
+    if(first && !liveCur) applyContent();
+  }catch(e){ /* keep showing what we have */ }
+}
+// start from the last good copy saved on this screen
+try{ const c = localStorage.getItem('wakediv-content'); if(c && (window.SIGNAGE_CONFIG || {}).sheetId){ useContent(JSON.parse(c)); contentSig = c; } }catch(_){}
+
+build(); buildTicker(); tick(); setInterval(tick, 10000);
+loadContent(); setInterval(loadContent, 2*60*1000);
+weather(); setInterval(weather, 15*60*1000);
+/* Preview states — keys: L live on/off (off plays the drop), C countdown on/off, G 6-second countdown that goes live */
+function preview(state){
+  if(state === 'end') state = 'slides';
+  liveDemo = state === 'live';
+  SOON_DEMO = state === 'countdown' ? demoSoon() : state === 'golive' ? demoSoon(6) : null;
+  checkLive(); tickSoon();          // live first, so a showing countdown hands off to the stream
+}
+
+function demoSoon(sec){ const t = new Date(Date.now() + (sec ? sec*1e3 : 42*60e3 + 15e3)), f = d => new Date(d - d.getTimezoneOffset()*6e4).toISOString().slice(0,19).replace('T',' ');
+  return { title:'Community Worship', url:'media/bg-night.mp4', start:f(t), end:f(new Date(+t + 36e5)), mode:'auto', place:'Wait Chapel' }; }
+if(PREVIEW && /[?&]soon=demo/.test(location.search)) SOON_DEMO = demoSoon();
+checkLive(); setInterval(checkLive, 15000);
+tickSoon(); setInterval(tickSoon, 1000);
+// hourly refresh for new content/code — but never in the middle of a livestream
+const BOOT = Date.now(); setInterval(() => { if(!liveCur && Date.now() - BOOT > 60*60*1000) location.reload(); }, 60000);
+</script>
+<script>if('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(()=>{});</script>
+</body>
+</html>

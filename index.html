@@ -1305,7 +1305,7 @@ async function readRange(id, range){
   return parseRows(t);
 }
 // Sheet layout — keep in step with the Dashboard tab
-const RANGES = { slides:'B14:R33', ticker:'B37:E46', live:'T14:AD17', lead:'AG14:AG14', labels:'AF17:AG28' };
+const RANGES = { slides:'B14:R33', ticker:'B37:E46', live:'T14:AD17', lead:'W21:W21', labels:'V23:W28', labels2:'AA23:AB28' };
 const LABEL_KEYS = { 'scan to':'scanTo', 'upcoming':'upcoming', 'icymi':'icymi', 'announcements':'announcements', 'live':'live', 'in':'in',
   'now (livestream)':'now', 'now (weather)':'wxNow', 'tomorrow':'tomorrow', 'rain':'rain', 'snow':'snow', 'sleet':'sleet' };
 const QRID = v => String(v || '').trim().toUpperCase().replace(/[^0-9A-Z]/g, '');
@@ -1337,7 +1337,7 @@ function fromSheet(t){
     title: esc(r[2]), url: r[3], start: r[4] && r[5] ? `${r[4]} ${r[5]}` : '', end: r[4] && r[6] ? `${r[4]} ${r[6]}` : '',
     place: esc(r[7]), screens: screensOf(r[8]), soundScreens: screensOf(String(r[9] || '').trim() ? r[9] : 'All'), qrCode: QRID(r[10]) }));
   const labels = {};
-  for(const [k, v] of t.labels || []){ const key = LABEL_KEYS[String(k || '').trim().toLowerCase()]; if(key && String(v || '').trim()) labels[key] = esc(String(v).trim()); }
+  for(const [k, v] of (t.labels || []).concat(t.labels2 || [])){ const key = LABEL_KEYS[String(k || '').trim().toLowerCase()]; if(key && String(v || '').trim()) labels[key] = esc(String(v).trim()); }
   const lead = parseInt(((t.lead || [])[0] || [])[0], 10);
   return { content, ticker, live, labels, settings: { countdownMin: (lead || 1) * 60 } };
 }

@@ -243,7 +243,7 @@
   #wxw .axis{display:flex;justify-content:space-between;margin-top:6px;font-size:19px}
 
   /* ---------- Ticker (same footprint; condensed bold, +10%) ---------- */
-  #ticker{position:absolute;left:0;right:0;bottom:0;height:var(--ticker-h);background:#000;border-top:2px solid var(--old-gold);display:flex;align-items:center;z-index:6;
+  #ticker{position:absolute;left:0;right:0;bottom:0;height:var(--ticker-h);background:#000;border-top:2px solid var(--old-gold);display:flex;align-items:center;z-index:10;
     font-stretch:75%;font-weight:800}
   /* countdown to the next livestream, left of the Announcements label */
   /* countdown block, inline in the ticker: gentle top-lit gradient + bevel for a soft 3D read */
@@ -251,12 +251,13 @@
   body.soon #soon{display:flex}
   /* live label: the same countdown bar, floated into the stream's lower-left corner */
   /* live label: the countdown bar itself, lifted straight up to sit on the ticker, then stretched to the chapel sidebar edge */
-  #livetab{position:absolute;left:0;bottom:var(--ticker-h);height:var(--ticker-h);width:calc(1920px - var(--side-w));max-width:none;z-index:7;
+  #livetab{position:absolute;left:0;bottom:var(--ticker-h);height:var(--ticker-h);width:calc(1920px - var(--side-w));max-width:none;z-index:9;
     opacity:0;pointer-events:none;transition:transform 1.1s cubic-bezier(.45,0,.25,1),width 1.1s cubic-bezier(.45,0,.25,1),opacity .8s ease}
   body.is-live #livetab{opacity:1}
   #livetab.flying{transition:none}
   /* stream ends: drop straight down behind the ticker (ticker sits above at z 6), fading once it's mostly tucked away */
-  #livetab.dropping{z-index:5;transform:translateY(var(--ticker-h));opacity:0;
+  /* layers: ticker (10) > white bar (9) > story bar (7) > slides — so returning slides fade in behind the bar as it drops */
+  #livetab.dropping{transform:translateY(var(--ticker-h));opacity:0;
     transition:transform 1.1s cubic-bezier(.45,0,.55,1),opacity .6s ease .6s}
   /* the glimmer is a countdown cue only: it stops once the stream is live */
   #livetab:after{content:none;animation:none}

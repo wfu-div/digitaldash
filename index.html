@@ -143,7 +143,6 @@
   .datebox .st{font-size:19px;font-weight:900;font-stretch:75%;letter-spacing:.16em;text-transform:uppercase;padding:9px 0 8px;margin-bottom:14px}
   .datebox .st.upcoming{background:var(--old-gold);color:#000}
   .datebox .st.recap{background:var(--paper);color:#000}
-  .datebox .st.recap:before{content:"▶ "}
   .datebox .m{font-size:27px;font-weight:800;letter-spacing:.2em;color:var(--gold-lt)}
   .datebox .d{font-family:var(--serif);font-size:125px;line-height:1;font-weight:600}
   .datebox .w{font-size:23px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;font-weight:700}
@@ -158,7 +157,6 @@
   .badge{display:inline-block;margin-top:6px;font-size:24px;font-weight:900;font-stretch:75%;letter-spacing:.16em;text-transform:uppercase;padding:8px 16px;border-radius:8px;margin-bottom:22px}
   .badge.upcoming{background:var(--old-gold);color:#000}
   .badge.recap{background:var(--paper);color:#000}
-  .badge.recap:before{content:"▶ "}
   .pg{display:flex;align-items:center;gap:12px;margin-left:24px}
   .pg i{width:36px;height:5px;border-radius:3px;background:var(--line)}
   .pg i.cur{background:var(--gold-lt)}
@@ -237,6 +235,10 @@
   #wxw .rl{display:flex;align-items:center;gap:4px;font-size:12px;font-weight:800;letter-spacing:.14em;margin-bottom:8px;color:rgba(157,192,234,.85)}
   #wxw .t0 .rain .num{font-size:46px;line-height:.62}
   #wxw .rain .num{color:#9DC0EA}
+  /* snow reads icy white, sleet a paler blue */
+  #wxw .k-snow .bars i{background:#C9D6E6} #wxw .k-snow .bars i.pk{background:#F2F6FB}
+  #wxw .k-snow .rain .num,#wxw .rain.k-snow .num{color:#E6EEF8} #wxw .k-snow .rl{color:rgba(230,238,248,.85)}
+  #wxw .k-sleet .bars i{background:#AFC8E6} #wxw .k-sleet .rain .num,#wxw .rain.k-sleet .num{color:#C3D7EF} #wxw .k-sleet .rl{color:rgba(195,215,239,.85)}
   #wxw .pct{font-size:.55em;margin-left:1px}
   #wxw .axis{display:flex;justify-content:space-between;margin-top:6px;font-size:19px}
 
@@ -1150,6 +1152,8 @@ const ICON = {
   sun:   `<svg viewBox="0 0 64 64" fill="none" stroke-linecap="round"><circle cx="32" cy="32" r="12" fill="#CEB888"/><g stroke="#CEB888" stroke-width="4">${[0,45,90,135,180,225,270,315].map(a=>`<line x1="32" y1="8" x2="32" y2="14" transform="rotate(${a} 32 32)"/>`).join('')}</g></svg>`,
   cloudPath: 'M18 48h28a11 11 0 0 0 1-22 15 15 0 0 0-29-3A12.5 12.5 0 0 0 18 48z',
 };
+/* precipitation type from the forecast code: snow (71–77, 85–86), sleet / freezing rain or drizzle (56, 57, 66, 67), otherwise rain */
+const precipKind = c => (c>=71&&c<=77)||c===85||c===86 ? 'snow' : [56,57,66,67].includes(c) ? 'sleet' : 'rain';
 function wxIcon(code){
   const cloud = (y=0, fill='#F5F1E8') => `<path d="${ICON.cloudPath}" transform="translate(0 ${y})" fill="${fill}"/>`;
   const svg = inner => `<svg viewBox="0 0 64 64" fill="none" stroke-linecap="round">${inner}</svg>`;
@@ -1157,20 +1161,26 @@ function wxIcon(code){
   if(code===2) return svg(`<circle cx="24" cy="22" r="10" fill="#CEB888"/>${cloud(4)}`);
   if(code===3) return svg(cloud(-2,'#c9c5bd'));
   if(code===45||code===48) return svg(`<g stroke="#c9c5bd" stroke-width="4"><line x1="12" y1="24" x2="52" y2="24"/><line x1="8" y1="34" x2="48" y2="34"/><line x1="16" y1="44" x2="56" y2="44"/></g>`);
-  if(code>=71&&code<=77 || code===85||code===86) return svg(`${cloud(-8,'#c9c5bd')}<g fill="#fff"><circle cx="22" cy="52" r="3"/><circle cx="32" cy="57" r="3"/><circle cx="42" cy="52" r="3"/></g>`);
+  const flake = (x, y, r) => `<g stroke="#E6EEF8" stroke-width="2.4" transform="translate(${x} ${y})">${[0,60,120].map(a=>`<line x1="0" y1="${-r}" x2="0" y2="${r}" transform="rotate(${a})"/>`).join('')}</g>`;
+  if(precipKind(code) === 'snow') return svg(`${cloud(-8,'#c9c5bd')}${flake(21,50,5)}${flake(33,57,5)}${flake(44,49,5)}`);
+  if(precipKind(code) === 'sleet') return svg(`${cloud(-8,'#c9c5bd')}<g stroke="#9DC0EA" stroke-width="4"><line x1="22" y1="45" x2="19" y2="54"/><line x1="40" y1="45" x2="37" y2="54"/></g><g fill="#E6EEF8"><circle cx="30" cy="51" r="3.2"/><circle cx="26" cy="59" r="3.2"/><circle cx="44" cy="59" r="3.2"/></g>`);
   if(code>=95) return svg(`${cloud(-8,'#c9c5bd')}<path d="M34 42l-8 12h7l-3 9 10-14h-7l3-7z" fill="#FDC314"/>`);
   return svg(`${cloud(-8,'#c9c5bd')}<g stroke="#9DC0EA" stroke-width="4"><line x1="22" y1="46" x2="19" y2="56"/><line x1="32" y1="46" x2="29" y2="56"/><line x1="42" y1="46" x2="39" y2="56"/></g>`);
 }
-const WXNAME = c => c<=0?'Clear':c===1?'Mostly clear':c===2?'Partly cloudy':c===3?'Cloudy':(c===45||c===48)?'Fog':(c>=51&&c<=57)?'Drizzle':(c>=61&&c<=67)?'Rain':(c>=71&&c<=77)?'Snow':(c>=80&&c<=82)?'Showers':(c===85||c===86)?'Snow showers':'Thunderstorms';
+const WXNAME = c => c<=0?'Clear':c===1?'Mostly clear':c===2?'Partly cloudy':c===3?'Cloudy':(c===45||c===48)?'Fog':(c===56||c===57||c===66||c===67)?'Sleet':(c>=51&&c<=55)?'Drizzle':(c>=61&&c<=65)?'Rain':(c>=71&&c<=77)?'Snow':(c>=80&&c<=82)?'Showers':(c===85||c===86)?'Snow showers':'Thunderstorms';
 
 const fmtS = h => h===0?'12a':h<12?h+'a':h===12?'12p':(h-12)+'p';
 const DROP = `<svg viewBox="0 0 24 24" width="13" height="13" style="width:13px;height:13px;margin:0 2px 0 0;vertical-align:-1px"><path d="M12 3c4 5 6 8.5 6 11a6 6 0 0 1-12 0c0-2.5 2-6 6-11z" fill="#9DC0EA"/></svg>`;
 
+const FLAKE = `<svg viewBox="0 0 24 24" width="13" height="13" style="width:13px;height:13px;margin:0 2px 0 0;vertical-align:-1px"><g stroke="#E6EEF8" stroke-width="2.4" stroke-linecap="round">${[0,60,120].map(a=>`<line x1="12" y1="3" x2="12" y2="21" transform="rotate(${a} 12 12)"/>`).join('')}</g></svg>`;
+const SLEETI = `<svg viewBox="0 0 24 24" width="13" height="13" style="width:13px;height:13px;margin:0 2px 0 0;vertical-align:-1px"><path d="M9 2c3 4 4.5 6.5 4.5 8.5a4.5 4.5 0 0 1-9 0C4.5 8.5 6 6 9 2z" fill="#9DC0EA"/><circle cx="17.5" cy="17.5" r="3.6" fill="#E6EEF8"/></svg>`;
+const PRECIP = { rain:{ icon:DROP, label:'RAIN' }, snow:{ icon:FLAKE, label:'SNOW' }, sleet:{ icon:SLEETI, label:'SLEET' } };
 const AXIS = `<div class="axis num dim"><span>6a</span><span>12p</span><span>6p</span><span>11p</span></div>`;
 const peakOf = hrs => hrs.reduce((a,b)=> b.p>a.p ? b : a, hrs[0]);
 
 /* today's graph: temperature line (dot = now) above hourly rain bars, short NOW marker; rain chance to its left */
 function graph(day, now){
+  const k = precipKind(day.code), P = PRECIP[k];
   const hrs = day.hourly, n = hrs.length, pk = peakOf(hrs);
   const ts = hrs.map(x=>x.t), tmin = Math.min(...ts), tmax = Math.max(...ts);
   const bars = hrs.map(x=>`<i class="${x===pk&&pk.p>0?'pk':''} ${now && x.h<now.hour?'past':''}" style="height:${Math.max(4, x.p)}%"></i>`).join('');
@@ -1186,8 +1196,8 @@ function graph(day, now){
   }
   const line = `<svg class="tline" viewBox="0 0 300 30" preserveAspectRatio="none" style="margin-bottom:-18px">
       <polyline points="${pts}" fill="none" stroke="rgba(245,241,232,.75)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>${dot}`;
-  const rain = `<div class="rain"><span class="rl">${DROP}RAIN</span><span class="num">${pk.p}<span class="pct">%</span></span></div>`;
-  return `<div class="graph"><div class="gcol">${line}<div class="pzone"><div class="bars">${bars}</div>${marker}</div>${AXIS}</div>${rain}</div>`;
+  const rain = `<div class="rain"><span class="rl">${P.icon}${P.label}</span><span class="num">${pk.p}<span class="pct">%</span></span></div>`;
+  return `<div class="graph k-${k}"><div class="gcol">${line}<div class="pzone"><div class="bars">${bars}</div>${marker}</div>${AXIS}</div>${rain}</div>`;
 }
 
 function renderWx(w, sample){
@@ -1198,7 +1208,7 @@ function renderWx(w, sample){
     ${graph(t, {hour:n.getHours(), min:n.getMinutes()})}`;
   $('#wday1').innerHTML = `<div class="lab">Tomorrow</div>
     <div class="hdr">${wxIcon(m.code)}<span class="num pair">${Math.round(m.hi)}° <span class="dim">/ ${Math.round(m.lo)}°</span></span>
-      <span class="rain">${DROP.replace(/13/g,'20')}<span class="num">${mp.p}<span class="pct">%</span></span></span></div>`;
+      <span class="rain k-${precipKind(m.code)}">${PRECIP[precipKind(m.code)].icon.replace(/13/g,'20')}<span class="num">${mp.p}<span class="pct">%</span></span></span></div>`;
 }
 
 const hrsOf = (arr, temps) => arr.map((p,i)=>({h:6+i, p, t:temps[i]}));

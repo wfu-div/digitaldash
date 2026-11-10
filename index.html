@@ -35,16 +35,18 @@
   #stage{position:absolute;width:1920px;height:1080px;transform-origin:0 0;background:var(--ink);color:var(--paper);font-family:var(--sans);overflow:hidden}
 
   /* ---------- Livestream takeover: main window only; logo, tower, clock, weather and ticker stay ---------- */
-  #slides,#timebar{transition:opacity 1.2s ease}
+  #slides,#timebar{transition:opacity 1.2s ease,visibility 0s}
+  body.is-live #slides,body.is-live #timebar{visibility:hidden;transition:opacity 1.2s ease,visibility 0s 1.2s}
   body.is-live #slides,body.is-live #timebar{opacity:0}
   #live{position:absolute;left:0;top:0;width:1920px;bottom:var(--ticker-h);z-index:3;opacity:0;pointer-events:none;transition:opacity 1.2s ease;background:#000}
   body.is-live #live{opacity:1}
   body.is-live.touch #live .lframe{pointer-events:auto}
   /* full-bleed 16:9 stream (1646×926) tucked behind the logo and tower; every edge feathers into the black,
      the right edge dissolves under the tower, the bottom fade stays short so captions keep full contrast */
-  #live .lframe{position:absolute;left:0;top:0;width:1646px;height:926px;background:#000;
-    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 3.5%,#000 84%,transparent 96%),linear-gradient(180deg,transparent 0,#000 6%,#000 93%,transparent 100%);
-    -webkit-mask-composite:source-in;mask-image:linear-gradient(90deg,transparent 0,#000 3.5%,#000 84%,transparent 96%),linear-gradient(180deg,transparent 0,#000 6%,#000 93%,transparent 100%);mask-composite:intersect}
+  #live .lframe{position:absolute;left:0;top:0;width:1646px;height:926px;background:#000}
+  #live .lframe:after{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
+    background:linear-gradient(90deg,#000 0,rgba(0,0,0,0) 3.5%),linear-gradient(90deg,rgba(0,0,0,0) 84%,#000 96%),
+      linear-gradient(180deg,#000 0,rgba(0,0,0,0) 6%),linear-gradient(180deg,rgba(0,0,0,0) 93%,#000 100%)}
   /* shade behind the logo so it stays legible over bright video */
   #live:after{content:"";position:absolute;left:0;top:0;width:900px;height:320px;pointer-events:none;
     background:radial-gradient(ellipse 100% 100% at 0 0,rgba(0,0,0,.72) 0%,rgba(0,0,0,.4) 45%,rgba(0,0,0,0) 75%)}
@@ -587,7 +589,7 @@ function contentHTML(p){
 }
 
 function panelHTML(p){
-  const bg = p.video ? `<div class="bg"><video src="${p.video}" muted loop playsinline preload="auto"></video></div>`
+  const bg = p.video ? `<div class="bg"><video data-src="${p.video}" muted loop playsinline preload="none"></video></div>`
     : p.image ? `<div class="bg" style="background:url('${p.image}') center/cover no-repeat"></div>` : `<div class="bg"></div>`;
   return `<div class="panel t-${p.theme} ${p.video||p.image?'has-video':''}" data-d="${p.duration||9}">
     ${bg}${ART}<div class="shade"></div><div class="barshade"></div>
@@ -650,7 +652,9 @@ function show(n){
       setTimeout(()=>{ if(!el.classList.contains('on')){ el.classList.add('noanim'); el.classList.remove('out'); void el.offsetWidth; el.classList.remove('noanim'); } }, 1700);
     }
     const v = el.querySelector('video');
-    if(v){ if(i===idx){ try{ v.currentTime = 0; v.play().catch(()=>{}); }catch(e){} } else setTimeout(()=>v.pause(), 1700); }
+    // only the slide on screen holds a video in memory; others are unloaded once they've slid away
+    if(v){ if(i===idx){ try{ if(!v.getAttribute('src')) v.src = v.dataset.src; v.currentTime = 0; v.play().catch(()=>{}); }catch(e){} }
+      else setTimeout(()=>{ if(!el.classList.contains('on') && v.getAttribute('src')){ v.pause(); v.removeAttribute('src'); v.load(); } }, 1700); }
   });
   const d = seq[idx].p.duration || 10;
   stage.style.setProperty('--d', d+'s');
@@ -722,7 +726,7 @@ function startLive(l, key){
   const want = wantsSound(l), sound = want && soundAllowed();
   const src = liveSource(l.url, sound), end = atLocal(l.end);
   clearTimeout(timer);
-  document.querySelectorAll('.slide video').forEach(v => v.pause());
+  document.querySelectorAll('.slide video').forEach(v => { v.pause(); if(v.getAttribute('src')){ v.removeAttribute('src'); v.load(); } });
   let player;
   if(src.kind === 'frame') player = `<iframe src="${src.src}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" title="${strip(l.title)}"></iframe>`;
   else if(src.kind === 'card') player = `<div class="lcard"><div><div class="kicker">${src.zoom ? 'Live now on Zoom' : 'Live now'}</div>

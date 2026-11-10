@@ -39,6 +39,7 @@
   body.is-live #slides,body.is-live #timebar{opacity:0}
   #live{position:absolute;left:0;top:0;width:1920px;bottom:var(--ticker-h);z-index:3;opacity:0;pointer-events:none;transition:opacity 1.2s ease;background:#000}
   body.is-live #live{opacity:1}
+  body.is-live.touch #live .lframe{pointer-events:auto}
   /* full-bleed 16:9 stream (1646×926) tucked behind the logo and tower; every edge feathers into the black,
      the right edge dissolves under the tower, the bottom fade stays short so captions keep full contrast */
   #live .lframe{position:absolute;left:0;top:0;width:1646px;height:926px;background:#000;
@@ -661,7 +662,11 @@ function show(n){
 
 /* ---------- livestream ---------- */
 let liveHandoff = false, liveCur = null, liveDemo = /[?&]preview/.test(location.search) && /[?&]live=demo/.test(location.search);
-const YT_P = 'autoplay=1&controls=0&playsinline=1&rel=0&iv_load_policy=3&cc_load_policy=1&cc_lang_pref=en';
+/* Touch devices (a phone or tablet previewing the page) get YouTube's own controls and a tappable player, because phones only
+   allow sound after a tap on the video itself. Kiosk screens (no touch) keep the clean, control-free player. */
+const TOUCH = matchMedia('(pointer: coarse)').matches;
+if(TOUCH) document.body.classList.add('touch');
+const YT_P = `autoplay=1&controls=${TOUCH ? 1 : 0}&playsinline=1&rel=0&iv_load_policy=3&cc_load_policy=1&cc_lang_pref=en`;
 const atLocal = t => parseWhen(t);
 const hmm = d => d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
 
@@ -722,7 +727,7 @@ function startLive(l, key){
   if(src.kind === 'frame') player = `<iframe src="${src.src}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" title="${strip(l.title)}"></iframe>`;
   else if(src.kind === 'card') player = `<div class="lcard"><div><div class="kicker">${src.zoom ? 'Live now on Zoom' : 'Live now'}</div>
       <h2>${l.title}</h2><p>${src.zoom ? 'Scan to join from your phone' : 'Scan to watch from your phone'}</p></div><div class="qt">${liveQR(l)}</div></div>`;
-  else player = `<video autoplay muted playsinline></video>`;
+  else player = `<video autoplay muted playsinline${TOUCH ? ' controls' : ''}></video>`;
   // where the countdown bar is right now (if it's showing), so the live bar can lift off from that exact spot
   const handoff = document.body.classList.contains('soon');
   $('#live').innerHTML = `<div class="lframe">${player}</div>`;
@@ -730,7 +735,7 @@ function startLive(l, key){
   tab.classList.remove('show','dropping');
   tab.innerHTML = `<span class="st">${strip(l.title)}</span><span class="sl"><span class="lv">${LBL.live}</span></span><span class="sc"><span class="cv">${cvHTML('now')}</span></span>`
     + (l.place ? `<span class="sep" aria-hidden="true"></span><span class="locw"><span class="loc">${venue(l.place)}</span></span>` : '')
-    + (want && !sound && src.kind !== 'card' ? `<span class="lsound"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></svg>Press any key for sound</span>` : '');
+    + (want && !sound && src.kind !== 'card' ? `<span class="lsound"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></svg>${TOUCH ? 'Tap the video for sound' : 'Press any key for sound'}</span>` : '');
   if(handoff){
     // 1) the bar starts exactly over the countdown (same width, in the ticker) and rises straight up by its own height
     const w = $('#soon').offsetWidth;
@@ -792,7 +797,7 @@ function unlockSound(){
   if(!liveCur || !liveCur.want || liveCur.sound || !soundAllowed()) return;
   const l = liveCur.l, key = liveCur.key; startLive(l, key);
 }
-addEventListener('click', unlockSound); addEventListener('keydown', e => { if(!/^[lLcCgG]$/.test(e.key)) unlockSound(); });
+addEventListener('click', unlockSound); addEventListener('pointerup', unlockSound); addEventListener('keydown', e => { if(!/^[lLcCgG]$/.test(e.key)) unlockSound(); });
 
 /* countdown: the next scheduled stream for this screen within COUNTDOWN_MIN minutes */
 function nextLive(){

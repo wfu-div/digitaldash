@@ -267,7 +267,10 @@
   #livetab .sep{display:inline-block;width:2px;height:36px;background:#7A5F22;opacity:.45;flex:none;margin:0 -4px}
   #livetab .loc{font-size:calc(36px * var(--x2cap,.69));font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#6B6458;white-space:nowrap;line-height:1}
   #livetab .lsound{margin-left:auto;color:#6B6458}
-  #livetab .st{flex-shrink:0;max-width:640px}
+  #livetab .st{flex:0 1 auto;min-width:0;max-width:none}
+  #livetab .sl,#livetab .sep,#livetab .locw{flex:none}
+  #livetab .sc{overflow:hidden;max-width:4em;transition:max-width 1.1s cubic-bezier(.45,0,.25,1),opacity .6s ease,margin 1.1s cubic-bezier(.45,0,.25,1)}
+  #livetab.nonow .sc{max-width:0;opacity:0;margin-left:-20px}
   /* counter box: value stays left-aligned; on a minute change (and 0:01 → NOW) the old value slides out left, clipped at the box edge */
   .ctab .sc,.ctab .dg{position:relative;display:inline-flex;align-items:center;text-transform:uppercase}
   .ctab .cv{display:inline-flex;align-items:center;gap:.32em}
@@ -457,6 +460,8 @@ const VENUES = {
   'Kulynych Auditorium':'Kulynych Auditorium · Byrum Welcome Center',
 };
 const venue = p => (p && VENUES[String(p).trim()]) || p || '';
+// live bar: the space only ("Kulynych Auditorium · Byrum Welcome Center" → "Kulynych Auditorium") so it never runs off the bar
+const space = p => venue(p).split(/\s*(?:·|\||,|–|—)\s*/)[0];
 // Settings tab: "Sound on screens" — which screens may play livestream audio. Each device must also allow autoplay with sound.
 let SOUND_SCREENS = ['rotunda','admissions','auditorium'];
 // Fixed words on screen; the Sheet's "Screen labels" can override each one
@@ -736,9 +741,9 @@ function startLive(l, key){
   const handoff = document.body.classList.contains('soon');
   $('#live').innerHTML = `<div class="lframe">${player}</div>`;
   const tab = $('#livetab');
-  tab.classList.remove('show','dropping');
+  tab.classList.remove('show','dropping','nonow');
   tab.innerHTML = `<span class="st">${strip(l.title)}</span><span class="sl"><span class="lv">${LBL.live}</span></span><span class="sc"><span class="cv">${cvHTML('now')}</span></span>`
-    + (l.place ? `<span class="sep" aria-hidden="true"></span><span class="locw"><span class="loc">${venue(l.place)}</span></span>` : '')
+    + (l.place ? `<span class="sep" aria-hidden="true"></span><span class="locw"><span class="loc">${space(l.place)}</span></span>` : '')
     + (want && !sound && src.kind !== 'card' ? `<span class="lsound"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></svg>${TOUCH ? 'Tap the video for sound' : 'Press any key for sound'}</span>` : '');
   if(handoff){
     // 1) the bar starts exactly over the countdown (same width, in the ticker) and rises straight up by its own height
@@ -750,15 +755,16 @@ function startLive(l, key){
     setTimeout(() => {
       // 3) as the bar's edge sweeps right, each piece (divider, location, sound hint) starts fading in the moment it is fully uncovered
       const W = tab.parentElement ? 1920 - parseFloat(getComputedStyle(stage).getPropertyValue('--side-w')) : w;
+      const sc = tab.querySelector('.sc'), fold = sc.offsetWidth + 20;   // NOW folds away as the bar stretches
       [...tab.querySelectorAll('.sep,.loc,.lsound')].forEach(el => {
-        const r = (el.closest('.locw') || el), right = r.offsetLeft + r.offsetWidth;
+        const r = (el.closest('.locw') || el), right = r.offsetLeft + r.offsetWidth - (el.classList.contains('lsound') ? 0 : fold);
         el.style.transitionDelay = revealAt(right, w, W, STRETCH_S).toFixed(2) + 's';
       });
-      tab.style.width = ''; tab.classList.add('show');
+      tab.style.width = ''; tab.classList.add('show','nonow');
       const so = $('#soon'); so.style.width = so.offsetWidth + 'px'; void so.offsetWidth; so.classList.add('collapse'); so.style.width = '0px';
       setTimeout(() => { liveHandoff = false; so.classList.remove('collapse','vacant'); so.style.width = ''; tab.style.opacity = ''; tickSoon(); }, 1150);
     }, 1150);
-  } else setTimeout(() => tab.classList.add('show'), 700);
+  } else { tab.classList.add('flying','nonow'); void tab.offsetWidth; tab.classList.remove('flying'); setTimeout(() => tab.classList.add('show'), 700); }
   document.body.classList.add('is-live');
   liveCur = { key, l, want, sound };
   fitSmallCaps();
